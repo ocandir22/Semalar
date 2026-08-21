@@ -1,0 +1,26 @@
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+
+# Environment Variables (Secrets)
+.env
+
+# Python Cache & Bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# IDEs
+.vscode/
+.idea/
+
+# Database (optional - seed.py creates it automatically)
+data/people.db
+data/*.db
+
+# OS Files
+.DS_Store
+Thumbs.db
