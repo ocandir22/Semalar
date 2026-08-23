@@ -126,4 +126,4 @@ python gemini_client.py
 * `What are the top 3 most tracked flights in the world right now and what aircraft are they flying?` ➡️ `get_most_tracked_flights(limit=3)`
 * `List 3 active airborne flights operated by Pegasus (PGT)` ➡️ `search_airline_flights(airline_code="PGT")`
 * `Show flights within 100 km of Istanbul (41.0082, 28.9784)` ➡️ `get_flights_over_region(...)`
-AQ.Ab8RN6KJkiUu2Bq6ovfhHTZslvQ5Q_hVR4nFvQ4RpIApNOYDNQ
+* `Provide details for Istanbul Airport (IST)` ➡️ `get_airport_info(airport_code="IST")`
