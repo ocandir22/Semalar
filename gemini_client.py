@@ -18,7 +18,6 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.7-flash")
 PUBLIC_MCP_URL = os.getenv("PUBLIC_MCP_URL", "http://localhost:8000/mcp")
 
-# Fallback models in case of high demand / 503 spikes on primary model
 FALLBACK_MODELS = [
     GEMINI_MODEL,
     "gemini-3.5-flash-lite",
@@ -100,7 +99,6 @@ def sanitize_schema_for_gemini(raw_schema: dict) -> dict:
 
     for prop_name, prop_def in raw_schema.get("properties", {}).items():
         prop_copy = dict(prop_def)
-        # Handle Pydantic Optional types (anyOf: [string, null])
         if "anyOf" in prop_copy:
             types_list = [x.get("type") for x in prop_copy["anyOf"] if isinstance(x, dict) and x.get("type") != "null"]
             prop_type = types_list[0] if types_list else "string"
@@ -118,7 +116,6 @@ def build_gemini_tools_from_mcp(mcp_tools):
     """Converts MCP tool definitions into Gemini FunctionDeclaration format."""
     function_declarations = []
     for tool in mcp_tools:
-        # Check input_schema (MCP Python SDK 2.0 uses snake_case input_schema)
         raw_schema = getattr(tool, "input_schema", getattr(tool, "inputSchema", {}))
         schema = sanitize_schema_for_gemini(raw_schema)
             
@@ -132,10 +129,24 @@ def build_gemini_tools_from_mcp(mcp_tools):
     return [types.Tool(function_declarations=function_declarations)]
 
 
+SYSTEM_INSTRUCTION = (
+    "Sen havacılık, uçak telemetrisi ve canlı uçuş takip konusunda uzman bir asistansın. "
+    "Kullanıcıların uçuşlar, uçak modelleri, havayolları, canlı radar ve havalimanı sorularını yanıtlamak için "
+    "SADECE ve SADECE sana sağlanan FlightRadar24 MCP Tool araçlarını kullan.\n\n"
+    "Kurallar:\n"
+    "1. Uçuş verilerini, irtifayı, hızları veya uçak modellerini asla uydurma. Yalnızca tool'dan gelen canlı JSON çıktısındaki değerleri kullan.\n"
+    "2. İrtifayı belirtirken hem feet hem metre cinsinden ver (örnek: 37.000 ft / ~11.277 m).\n"
+    "3. Hızı belirtirken hem knot hem km/s cinsinden ver (örnek: 480 kts / ~889 km/s).\n"
+    "4. Uçak modeli bilgisini (Boeing 777-300ER, Airbus A321neo vb.) mutlaka vurgula.\n"
+    "5. Eğer uçuş bulunamadıysa (not_found), uçuşun henüz kalkmamış veya inmiş olabileceğini nazikçe belirt.\n"
+    "6. Yanıtlarını kullanıcının dilinde (Türkçe/İngilizce), net, okunabilir ve madde işaretleriyle zenginleştirilmiş formatta ver."
+)
+
+
 async def process_user_query(user_query: str, genai_client: genai.Client, gemini_tools: list, mcp_url: str):
     """Processes a natural language query using Gemini + Remote MCP Server."""
-    print(f"\n💬 User Query: \"{user_query}\"")
-    print(f"📡 Sending query to Gemini ({GEMINI_MODEL}) with Remote MCP tools...")
+    print(f"\n💬 Soru: \"{user_query}\"")
+    print(f"📡 Gemini ({GEMINI_MODEL}) modeline iletiliyor...")
 
     contents = [
         types.Content(
@@ -146,17 +157,14 @@ async def process_user_query(user_query: str, genai_client: genai.Client, gemini
 
     config = types.GenerateContentConfig(
         tools=gemini_tools,
-        system_instruction=(
-            "You are a helpful assistant with access to a people database via MCP tools. "
-            "Always use the provided MCP tools to answer questions about people, "
-            "Answer clearly and accurately in the language of the user (e.g. Turkish or English)."
-        )
+        temperature=0.0,
+        system_instruction=SYSTEM_INSTRUCTION
     )
 
     try:
         response, active_model = await call_gemini_with_retry(genai_client, GEMINI_MODEL, contents, config)
     except Exception as e:
-        print(f"❌ Gemini API Error: {e}")
+        print(f"❌ Gemini API Hatası: {e}")
         return
 
     # Check if Gemini decided to call one or more tools
@@ -168,13 +176,13 @@ async def process_user_query(user_query: str, genai_client: genai.Client, gemini
             tool_name = function_call.name
             tool_args = function_call.args or {}
 
-            print(f"⚙️  [Gemini -> MCP Tool Call] Executing: {tool_name}({tool_args}) via {mcp_url} ...")
+            print(f"⚙️  [MCP Araç Çağrısı] {tool_name}({tool_args}) ...")
             
             try:
                 result_text = await execute_remote_mcp_tool(mcp_url, tool_name, tool_args)
-                print(f"📥 [MCP Server -> Gemini Response] Result:\n{result_text}")
+                print(f"📥 [MCP Yanıtı Alındı]")
             except Exception as e:
-                print(f"❌ MCP Execution Error: Could not execute tool {tool_name} on {mcp_url}. Details: {e}")
+                print(f"❌ MCP Çalıştırma Hatası: {e}")
                 result_text = json.dumps({"error": str(e)})
 
             try:
@@ -196,45 +204,45 @@ async def process_user_query(user_query: str, genai_client: genai.Client, gemini
                 genai_client,
                 active_model,
                 contents,
-                types.GenerateContentConfig(tools=gemini_tools)
+                types.GenerateContentConfig(tools=gemini_tools, temperature=0.0, system_instruction=SYSTEM_INSTRUCTION)
             )
-            answer = final_response.text or "(No text response)"
-            print(f"\n🤖 [Gemini Final Answer]:\n{answer}\n" + "=" * 60)
+            answer = final_response.text or "(Yanıt alınamadı)"
+            print(f"\n✈️ [Gemini Canlı Havacılık Yanıtı]:\n{answer}\n" + "=" * 60)
             return answer
         except Exception as e:
-            print(f"❌ Gemini Error generating final response: {e}")
+            print(f"❌ Gemini Yanıt Oluşturma Hatası: {e}")
             return
     else:
-        answer = response.text or "(No text response)"
-        print(f"\n🤖 [Gemini Answer (Direct)]:\n{answer}\n" + "=" * 60)
+        answer = response.text or "(Yanıt alınamadı)"
+        print(f"\n✈️ [Gemini Doğrudan Yanıt]:\n{answer}\n" + "=" * 60)
         return answer
 
 
 async def main():
     if not GEMINI_API_KEY or GEMINI_API_KEY.strip() in ["", "your_gemini_api_key_here"]:
-        print("❌ Error: GEMINI_API_KEY is not set. Please add your GEMINI_API_KEY to .env file.")
+        print("❌ Hata: GEMINI_API_KEY .env dosyasında tanımlı değil.")
         sys.exit(1)
 
     print("=" * 60)
-    print("🚀 Gemini + Remote MCP Server Client")
-    print(f"📡 Remote MCP URL : {PUBLIC_MCP_URL}")
+    print("✈️ FlightRadar24 + Gemini Canlı Havacılık İstemcisi")
+    print(f"📡 MCP Server URL : {PUBLIC_MCP_URL}")
     print(f"🧠 Gemini Model   : {GEMINI_MODEL}")
     print("=" * 60)
 
     genai_client = genai.Client(api_key=GEMINI_API_KEY)
 
     try:
-        print(f"Connecting to MCP Server at {PUBLIC_MCP_URL} ...")
+        print(f"MCP Sunucusuna bağlanılıyor ({PUBLIC_MCP_URL})...")
         mcp_tools = await get_remote_mcp_tools(PUBLIC_MCP_URL)
         gemini_tools = build_gemini_tools_from_mcp(mcp_tools)
-        print(f"✅ Connected! Loaded {len(mcp_tools)} MCP tools:")
+        print(f"✅ Bağlantı başarılı! Yüklenen {len(mcp_tools)} MCP Uçuş Aracı:")
         for t in mcp_tools:
             first_line = t.description.splitlines()[0] if t.description else ""
             print(f"   - {t.name}: {first_line}")
     except Exception as e:
-        print(f"❌ Connection Error: Could not connect to MCP Server at {PUBLIC_MCP_URL}.")
-        print(f"Details: {e}")
-        print("Make sure server.py is running in a terminal (and ngrok is active if using a public URL).")
+        print(f"❌ Bağlantı Hatası: {PUBLIC_MCP_URL} adresindeki MCP sunucusuna erişilemedi.")
+        print(f"Detay: {e}")
+        print("Lütfen başka bir terminalde '.venv/bin/python server.py' çalıştırdığınızdan emin olun.")
         return
 
     # If query passed as CLI argument, run once and exit
@@ -244,24 +252,29 @@ async def main():
         return
 
     # Interactive chat mode
-    print("\n💡 Interactive Mode: Type your question in Turkish or English (or 'exit' to quit):")
-    print("Example: Ali nerede doğmuş? / Ankara'da doğan kişileri göster / Doktor olanların yaşları kaç?\n")
+    print("\n💡 Canlı Uçuş ve Uçak Takip Modu: Sorunuzu yazın (çıkmak için 'exit'):")
+    print("Örnek Sorular:")
+    print("  • THY10 nolu uçak şu an nerede, irtifası kaç ve uçağın modeli ne?")
+    print("  • Dünyada şu an en çok takip edilen ilk 3 uçuş hangisi?")
+    print("  • İstanbul (41.0082, 28.9784) semalarında uçan uçakları göster")
+    print("  • Pegasus'un (PGT) havadaki uçaklarını listele")
+    print("  • IST ve SAW havalimanı bilgileri nelerdir?\n")
 
     while True:
         try:
-            user_input = await asyncio.to_thread(input, "You > ")
+            user_input = await asyncio.to_thread(input, "FlightRadar > ")
             user_input = user_input.strip()
             if not user_input:
                 continue
             if user_input.lower() in ["exit", "quit", "q"]:
-                print("Goodbye!")
+                print("İyi uçuşlar!")
                 break
             await process_user_query(user_input, genai_client, gemini_tools, PUBLIC_MCP_URL)
         except (KeyboardInterrupt, EOFError):
-            print("\nSession ended.")
+            print("\nOturum sonlandırıldı.")
             break
         except Exception as e:
-            print(f"❌ Unexpected Error: {e}")
+            print(f"❌ Beklenmeyen Hata: {e}")
 
 
 if __name__ == "__main__":

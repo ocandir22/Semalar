@@ -17,10 +17,6 @@ __pycache__/
 .vscode/
 .idea/
 
-# Database (optional - seed.py creates it automatically)
-data/people.db
-data/*.db
-
 # OS Files
 .DS_Store
 Thumbs.db

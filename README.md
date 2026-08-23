@@ -1,113 +1,129 @@
-# People MCP + Gemini API + SQLite + ngrok
+# ✈️ Semalar — Canlı Uçuş ve Uçak Takip MCP Sunucusu (FlightRadar24 + Gemini AI)
 
-Bu proje, **Python**, **Streamable HTTP MCP Server**, **SQLite**, **ngrok** ve **Google Gemini API (`google-genai`)** kullanarak sıfırdan geliştirilmiş bir Model Context Protocol (MCP) projesidir.
+**Semalar**, **FlightRadar24 canlı ADS-B telemetrisini**, **Model Context Protocol (MCP - Streamable HTTP)** standartlarını ve **Google Gemini AI (`google-genai`)** modelini birleştirerek; doğal dilde uçuş takibi, uçak modeli sorgulaması, radar taraması ve havalimanı telemetrisi sunan yeni nesil bir yapay zeka havacılık asistanıdır.
 
 ---
 
-## 🏗️ Mimari ve Akış
+## 🏗️ 1. Büyük Resim (Sistem Nasıl Çalışıyor?)
+
+Sistem, yapay zekanın kendi genel bilgisinden uydurmasını (**halüsinasyon**) engellemek için **Tool Calling (Araç Çağırma)** mimarisiyle çalışır. Verinin tek gerçeği canlı FlightRadar24 ağıdır.
 
 ```text
-Kullanıcı ("Ali nerede doğmuş?")
-       │
-       ▼
-Gemini API (google-genai)
-       │ (MCP tool kararı: get_person(name="Ali"))
-       ▼
-ngrok Tüneli (https://xxxx.ngrok.app/mcp)
-       │
-       ▼
-Local MCP Server (http://localhost:8000/mcp - Streamable HTTP)
-       │
-       ▼
-SQLite Database (people.db - Doğum tarihinden dinamik yaş hesabı)
-       │
-       ▼
-MCP Server ──(JSON Sonuç)──> Gemini API ──(Doğal Dil Yanıtı)──> Kullanıcı
+ ┌─────────────────┐       (1) Doğal Dil Sorusu       ┌──────────────────┐
+ │    Kullanıcı    │ ───────────────────────────────> │  Gemini API (AI) │
+ └─────────────────┘                                  └─────────┬────────┘
+          ▲                                                     │ (2) "get_flight_info(query='TK2167')"
+          │ (5) Doğal Dil Yanıtı                                ▼     (MCP Tool Seçimi)
+ ┌────────┴────────┐                                  ┌──────────────────┐
+ │  gemini_client  │ <─────────────────────────────── │   server.py      │
+ │    (İstemci)    │       (4) Canlı JSON Telemetri   │   (MCP Server)   │
+ └─────────────────┘                                  └─────────┬────────┘
+                                                                │ (3) Çok Katmanlı Arama
+                                                                ▼
+                                                      ┌──────────────────┐
+                                                      │ flight_service.py│
+                                                      │ (FlightRadar24)  │
+                                                      └──────────────────┘
 ```
+
+---
+
+## ⚙️ 2. Çalışma Mekanizması ve Katmanlar (Adım Adım)
+
+Proje 3 temel katmandan oluşur:
+
+### 1. Katman: Veri Katmanı (`flight_service.py`)
+FlightRadar24 canlı telemetri ağına bağlanır ve dünya genelindeki 15.000+ uçuş arasından verileri çeker:
+* **Çok Katmanlı Global Arama:**
+  1. `fr_api.search(query)` ile FlightRadar'ın global indeksinden uçağın canlı `flight_id` değeri yakalanır.
+  2. `fr_api.get_flight_details()` ile anlık GPS koordinatları, irtifa izi (`trail`) ve uçak modeli çekilir.
+  3. Çağrı kodu (`THY9UC`), sefer no (`TK2167`) ve tescil (`TC-JYA`) birbirine otomatik eşleştirilir.
+* **Birim Dönüşümleri & Geometri:** Hız knot'tan km/s'ye, irtifa feet'ten metreye dönüştürülür. Haversine formülü ile şehir koordinatlarına olan mesafe anlık hesaplanır.
+
+### 2. Katman: MCP Sunucu Katmanı (`server.py`)
+Python fonksiyonlarını yapay zekanın anlayacağı evrensel MCP standardına dönüştürür:
+* **`@mcp_server.tool()`:** Fonksiyon docstring ve tip tanımlarından otomatik JSON-RPC şeması üretir.
+* **Streamable HTTP (`/mcp`):** Sunucu `http://localhost:8000/mcp` adresi üzerinden Streamable HTTP standardıyla yayın yapar.
+* **Canlı Web Dashboard (`http://localhost:8000`):** Tarayıcı üzerinden sunucu durumunu ve dünyada en çok takip edilen ilk 5 uçuşu gösterir.
+
+### 3. Katman: Gemini İstemci Katmanı (`gemini_client.py`)
+Kullanıcı ile yapay zeka arasındaki iletişimi yönetir:
+* **Dinamik Araç Keşfi:** MCP sunucusundaki araçları otomatik olarak Gemini `FunctionDeclaration` nesnelerine dönüştürür.
+* **Sıfır Halüsinasyon (`temperature=0.0`):** Katı sistem talimatlarıyla modelin yalnızca gelen JSON verisini yorumlaması sağlanır.
+* **Hata Toleransı (Fallback):** Model yoğunluklarında otomatik yeniden deneme ve model yedekleme (`gemini-3.7-flash` ➔ `gemini-3.5-flash-lite` ➔ `gemini-2.5-flash`) mekanizması çalışır.
+
+---
+
+## 📋 Tanımlı MCP Uçuş Araçları (Tools)
+
+| Araç Adı | Parametreler | Açıklama |
+| :--- | :--- | :--- |
+| **`get_flight_info`** | `query: str` | Uçuş no (`TK10`), çağrı kodu (`THY9UC`) veya kuyruk tescilinden (`TC-JYA`) anlık konum, irtifa, hız, rota ve uçak modelini getirir. |
+| **`search_airline_flights`** | `airline_code: str`, `limit: int?` | Havayolu koduyla (`THY`, `PGT`, `BAW`, `DLH`, `UAE`) havadaki tüm aktif uçakları listeler. |
+| **`get_flights_over_region`** | `latitude: float`, `longitude: float`, `radius_km: float?` | Belirtilen koordinat ve yarıçap çevresindeki hava sahasını tarar (örn: İstanbul semaları). |
+| **`get_most_tracked_flights`** | `limit: int?` | Dünyada anlık olarak Flightradar24'te en çok takip edilen ilk 10 uçuşu listeler. |
+| **`get_airport_info`** | `airport_code: str` | IATA/ICAO koduna göre havalimanı detaylarını (`IST`, `SAW`, `ESB`, `LHR` vb.) getirir. |
 
 ---
 
 ## 🛠️ Proje Dosya Yapısı
 
 ```text
-people-mcp/
-├── server.py             # Streamable HTTP MCP Server (/mcp)
-├── database.py           # SQLite veritabanı bağlantısı ve yaş hesaplama
-├── seed.py               # 25 adet sahte kişiyi veritabanına ekleme
-├── gemini_client.py      # Gemini API ile Remote MCP Server'ı bağlayan istemci
-├── run_ngrok.py          # ngrok tünelini tek komutla açan yardımcı script
-├── data/
-│   └── people.db         # SQLite veritabanı
-├── .env                  # API anahtarları ve URL ayarları
-├── .env.example          # Örnek konfigürasyon dosyası
-├── requirements.txt      # Gerekli Python paketleri
-└── README.md
+Semalar/
+├── flight_service.py      # Canlı FlightRadar24 API entegrasyonu ve telemetri motoru
+├── server.py              # Streamable HTTP MCP Server & Web Dashboard (/ & /mcp)
+├── gemini_client.py       # Gemini API ile Remote MCP Server'ı bağlayan havacılık istemcisi
+├── test_flight_mcp.py     # MCP araçlarını doğrudan test eden otomatik test betiği
+├── requirements.txt       # Gerekli Python bağımlılıkları
+├── .env                   # Gemini API Key ve Sunucu URL ayarları
+├── .env.example           # Örnek konfigürasyon dosyası
+├── .gitignore             # Git dışı bırakılacak dosyalar
+└── README.md              # Proje dökümantasyonu
 ```
-
----
-
-## 📋 MCP Server Tool'ları
-
-| Tool | Parametreler | Açıklama |
-| :--- | :--- | :--- |
-| **`get_person`** | `name: str` | İsim ile kişi bilgilerini (doğum yeri, meslek, doğum tarihi ve hesaplanmış yaş) getirir. |
-| **`list_people`** | - | Veritabanındaki tüm kişileri listeler. |
-| **`search_people`** | `profession: str?`, `birth_place: str?` | Meslek ve/veya doğum yerine göre filtreleme yapar. |
-
-> 💡 **Not:** Yaş veritabanında saklanmaz; her sorguda `birth_date` üzerinden dinamik olarak hesaplanır.
 
 ---
 
 ## 🚀 Kurulum ve Çalıştırma Adımları
 
 ### 1. Adım: Bağımlılıkları Yükleyin
-```powershell
-# Proje dizinine gidin
-cd c:\Users\ocandir\Desktop\people-mcp
+```bash
+# Sanal ortamı aktif edin (macOS / Linux)
+source .venv/bin/activate
 
-# Sanal ortamı aktif edin ve paketleri yükleyin
-.\.venv\Scripts\pip install -r requirements.txt
+# Paketleri yükleyin
+pip install -r requirements.txt
 ```
 
-### 2. Adım: Veritabanını Doldurun (Seed)
-```powershell
-.\.venv\Scripts\python seed.py
-```
-
-### 3. Adım: .env Dosyasını Düzenleyin
-`.env` dosyasını açın ve `GEMINI_API_KEY` değerinizi girin:
+### 2. Adım: .env Dosyasını Yapılandırın
+`.env` dosyasını açıp [Google AI Studio](https://aistudio.google.com/app/apikey)'dan aldığınız API anahtarınızı girin:
 ```env
-GEMINI_API_KEY=AIzaSy...
-GEMINI_MODEL=gemini-2.5-flash
+GEMINI_API_KEY=your_gemini_api_key_here
+GEMINI_MODEL=gemini-3.7-flash
 PUBLIC_MCP_URL=http://localhost:8000/mcp
 ```
 
 ---
 
-### 4. Adım: Sistemi Çalıştırma (3 Terminal)
+### 3. Adım: Sistemi Çalıştırma
 
-#### 💻 Terminal 1: MCP Server'ı Başlatın
-```powershell
-.\.venv\Scripts\python server.py
+#### 💻 1. Terminal: MCP Sunucusunu Başlatın
+```bash
+python server.py
 ```
-*(MCP Server `http://localhost:8000/mcp` üzerinde Streamable HTTP ile çalışacaktır).*
+* **MCP Endpoint:** `http://localhost:8000/mcp`
+* **Canlı Web Dashboard:** `http://localhost:8000`
 
-#### 💻 Terminal 2: ngrok ile Dışarı Açın (Opsiyonel / Remote Test)
-```powershell
-.\.venv\Scripts\python run_ngrok.py
-```
-*(Ekrana gelen `https://xxxx.ngrok-free.app/mcp` adresini kopyalayıp `.env` dosyasındaki `PUBLIC_MCP_URL` alanına yazın).*
-
-#### 💻 Terminal 3: Gemini Client'ı Çalıştırın
-```powershell
-.\.venv\Scripts\python gemini_client.py
+#### 💻 2. Terminal: Gemini İstemcisini Çalıştırın
+```bash
+python gemini_client.py
 ```
 
 ---
 
 ## 💬 Örnek Doğal Dil Soruları
 
-* `Ali nerede doğmuş?` ➡️ `get_person(name="Ali")`
-* `Ankara'da doğan kişileri göster` ➡️ `search_people(birth_place="Ankara")`
-* `Doktor olan kişilerin yaşları kaç?` ➡️ `search_people(profession="Doktor")`
-* `Veritabanındaki herkesi listele` ➡️ `list_people()`
+* `THY9UC uçağının bilgileri nedir ve şu an hangi şehir üzerinde?` ➡️ `get_flight_info(query="THY9UC")`
+* `Dünyada şu an en çok takip edilen ilk 3 uçuş hangisi ve modelleri ne?` ➡️ `get_most_tracked_flights(limit=3)`
+* `Pegasus'un (PGT) havadaki aktif uçaklarından 3 tanesini listele` ➡️ `search_airline_flights(airline_code="PGT")`
+* `İstanbul (41.0082, 28.9784) semalarında 100 km içinde uçan uçaklar hangileri?` ➡️ `get_flights_over_region(...)`
+* `IST ve SAW havalimanları hakkında detaylı bilgi ver` ➡️ `get_airport_info(airport_code="IST")`
