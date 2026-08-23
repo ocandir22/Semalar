@@ -18,6 +18,7 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.7-flash")
 PUBLIC_MCP_URL = os.getenv("PUBLIC_MCP_URL", "http://localhost:8000/mcp")
 
+# Fallback models in case of high traffic spikes or temporary 503 errors
 FALLBACK_MODELS = [
     GEMINI_MODEL,
     "gemini-3.5-flash-lite",
@@ -87,7 +88,7 @@ async def execute_remote_mcp_tool(mcp_url: str, tool_name: str, tool_args: dict)
 
 
 def sanitize_schema_for_gemini(raw_schema: dict) -> dict:
-    """Cleans up Pydantic/MCP JSON schema so Gemini can understand tool parameter requirements perfectly."""
+    """Cleans up Pydantic/MCP JSON schema so Gemini can understand tool parameter requirements."""
     if not isinstance(raw_schema, dict):
         return {"type": "OBJECT", "properties": {}}
 
@@ -224,7 +225,7 @@ async def main():
         sys.exit(1)
 
     print("=" * 60)
-    print("✈️ FlightRadar24 + Gemini Canlı Havacılık İstemcisi")
+    print("✈️ Semalar — FlightRadar24 + Gemini Canlı Havacılık İstemcisi")
     print(f"📡 MCP Server URL : {PUBLIC_MCP_URL}")
     print(f"🧠 Gemini Model   : {GEMINI_MODEL}")
     print("=" * 60)
@@ -242,7 +243,7 @@ async def main():
     except Exception as e:
         print(f"❌ Bağlantı Hatası: {PUBLIC_MCP_URL} adresindeki MCP sunucusuna erişilemedi.")
         print(f"Detay: {e}")
-        print("Lütfen başka bir terminalde '.venv/bin/python server.py' çalıştırdığınızdan emin olun.")
+        print("Lütfen başka bir terminalde 'python server.py' çalıştırdığınızdan emin olun.")
         return
 
     # If query passed as CLI argument, run once and exit

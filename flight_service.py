@@ -14,7 +14,7 @@ class FlightRef:
 
 
 def calculate_distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """Calculates haversine distance in km between two lat/lon coordinates."""
+    """Calculates haversine distance in kilometers between two lat/lon coordinates."""
     R = 6371.0
     dlat = math.radians(lat2 - lat1)
     dlon = math.radians(lon2 - lon1)
@@ -26,7 +26,7 @@ def calculate_distance_km(lat1: float, lon1: float, lat2: float, lon2: float) ->
 
 
 def format_flight_summary(flight) -> Dict[str, Any]:
-    """Formats a basic Flight object into a clean dictionary."""
+    """Formats a basic Flight object into a structured telemetry dictionary."""
     altitude_ft = getattr(flight, "altitude", 0) or 0
     ground_speed_kts = getattr(flight, "ground_speed", 0) or 0
     
@@ -140,7 +140,7 @@ def get_flight_info(query: str) -> Dict[str, Any]:
     """
     clean_query = query.strip().upper().replace(" ", "")
     if not clean_query:
-        return {"status": "error", "message": "Uçuş numarası veya çağrı kodu boş olamaz."}
+        return {"status": "error", "message": "Flight number or callsign query cannot be empty."}
 
     # Strategy 1: FlightRadar24 Global Search (Exact & Live)
     try:
@@ -201,11 +201,11 @@ def get_flight_info(query: str) -> Dict[str, Any]:
                     pass
                 return {"status": "success", "source": "global_snapshot_telemetry", "flight": summary}
     except Exception as e:
-        return {"status": "error", "message": f"FlightRadar24 API'ye erişilemedi: {str(e)}"}
+        return {"status": "error", "message": f"Could not access FlightRadar24 API: {str(e)}"}
 
     return {
         "status": "not_found",
-        "message": f"'{query}' kodlu uçuş şu anda FlightRadar üzerinde havada veya aktif olarak bulunamadı. Uçuş henüz kalkmamış veya inmiş olabilir."
+        "message": f"Flight '{query}' is currently not found active in the air on FlightRadar. It may not have departed yet or has already landed."
     }
 
 
@@ -218,12 +218,12 @@ def search_airline_flights(airline_code: str, limit: int = 15) -> Dict[str, Any]
             all_flights = fr_api.get_flights()
             flights = [f for f in all_flights if getattr(f, "airline_iata", "").upper() == clean_code]
     except Exception as e:
-        return {"status": "error", "message": f"Havayolu uçuşları çekilemedi: {str(e)}"}
+        return {"status": "error", "message": f"Failed to fetch airline flights: {str(e)}"}
 
     if not flights:
         return {
             "status": "not_found",
-            "message": f"'{airline_code}' havayolu için şu anda havada aktif uçuş bulunamadı."
+            "message": f"No active airborne flights found for airline code '{airline_code}'."
         }
 
     results = [format_flight_summary(f) for f in flights[:limit]]
@@ -243,12 +243,12 @@ def get_flights_over_region(latitude: float, longitude: float, radius_km: float 
         bounds = fr_api.get_bounds_by_point(latitude, longitude, radius_meters)
         flights = fr_api.get_flights(bounds=bounds)
     except Exception as e:
-        return {"status": "error", "message": f"Bölge uçuşları çekilemedi: {str(e)}"}
+        return {"status": "error", "message": f"Failed to fetch regional flights: {str(e)}"}
 
     if not flights:
         return {
             "status": "not_found",
-            "message": f"({latitude}, {longitude}) koordinatının {radius_km} km çevresinde şu an uçuş bulunamadı."
+            "message": f"No active flights found within {radius_km} km of coordinates ({latitude}, {longitude})."
         }
 
     enriched = []
@@ -304,7 +304,7 @@ def get_most_tracked_flights(limit: int = 10) -> Dict[str, Any]:
             "most_tracked_flights": tracked_list
         }
     except Exception as e:
-        return {"status": "error", "message": f"En çok takip edilen uçuşlar çekilemedi: {str(e)}"}
+        return {"status": "error", "message": f"Failed to fetch most tracked flights: {str(e)}"}
 
 
 def get_airport_info(airport_code: str) -> Dict[str, Any]:
@@ -323,7 +323,7 @@ def get_airport_info(airport_code: str) -> Dict[str, Any]:
         if not matched:
             return {
                 "status": "not_found",
-                "message": f"'{airport_code}' IATA/ICAO koduna sahip havalimanı bulunamadı."
+                "message": f"Airport with IATA/ICAO code '{airport_code}' was not found."
             }
 
         return {
@@ -340,4 +340,4 @@ def get_airport_info(airport_code: str) -> Dict[str, Any]:
             }
         }
     except Exception as e:
-        return {"status": "error", "message": f"Havalimanı bilgisi çekilemedi: {str(e)}"}
+        return {"status": "error", "message": f"Failed to fetch airport information: {str(e)}"}

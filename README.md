@@ -1,101 +1,101 @@
-# ✈️ Semalar — Canlı Uçuş ve Uçak Takip MCP Sunucusu (FlightRadar24 + Gemini AI)
+# ✈️ Semalar — Live Flight & Aircraft Tracking MCP Server (FlightRadar24 + Gemini AI)
 
-**Semalar**, **FlightRadar24 canlı ADS-B telemetrisini**, **Model Context Protocol (MCP - Streamable HTTP)** standartlarını ve **Google Gemini AI (`google-genai`)** modelini birleştirerek; doğal dilde uçuş takibi, uçak modeli sorgulaması, radar taraması ve havalimanı telemetrisi sunan yeni nesil bir yapay zeka havacılık asistanıdır.
+**Semalar** is a modern AI-powered aviation assistant that connects **FlightRadar24's live ADS-B telemetry network**, the **Model Context Protocol (MCP - Streamable HTTP)**, and **Google Gemini AI (`google-genai`)** to deliver real-time flight tracking, aircraft model lookup, airspace radar scanning, and airport telemetry through natural language queries.
 
 ---
 
-## 🏗️ 1. Büyük Resim (Sistem Nasıl Çalışıyor?)
+## 🏗️ 1. Architecture & Overview
 
-Sistem, yapay zekanın kendi genel bilgisinden uydurmasını (**halüsinasyon**) engellemek için **Tool Calling (Araç Çağırma)** mimarisiyle çalışır. Verinin tek gerçeği canlı FlightRadar24 ağıdır.
+To prevent hallucination, the system relies entirely on **Tool Calling (Function Calling)**. The single source of truth is the live FlightRadar24 network.
 
 ```text
- ┌─────────────────┐       (1) Doğal Dil Sorusu       ┌──────────────────┐
- │    Kullanıcı    │ ───────────────────────────────> │  Gemini API (AI) │
- └─────────────────┘                                  └─────────┬────────┘
-          ▲                                                     │ (2) "get_flight_info(query='TK2167')"
-          │ (5) Doğal Dil Yanıtı                                ▼     (MCP Tool Seçimi)
- ┌────────┴────────┐                                  ┌──────────────────┐
- │  gemini_client  │ <─────────────────────────────── │   server.py      │
- │    (İstemci)    │       (4) Canlı JSON Telemetri   │   (MCP Server)   │
- └─────────────────┘                                  └─────────┬────────┘
-                                                                │ (3) Çok Katmanlı Arama
-                                                                ▼
-                                                      ┌──────────────────┐
-                                                      │ flight_service.py│
-                                                      │ (FlightRadar24)  │
-                                                      └──────────────────┘
+ ┌─────────────────┐       (1) Natural Language Query       ┌──────────────────┐
+ │      User       │ ─────────────────────────────────────> │  Gemini API (AI) │
+ └─────────────────┘                                        └─────────┬────────┘
+          ▲                                                           │ (2) "get_flight_info(query='TK2167')"
+          │ (5) Natural Language Report                               ▼     (MCP Tool Selection)
+ ┌────────┴────────┐                                        ┌──────────────────┐
+ │  gemini_client  │ <───────────────────────────────────── │   server.py      │
+ │    (Client)     │       (4) Live Telemetry JSON          │   (MCP Server)   │
+ └─────────────────┘                                        └─────────┬────────┘
+                                                                      │ (3) Multi-Tiered Search
+                                                                      ▼
+                                                            ┌──────────────────┐
+                                                            │ flight_service.py│
+                                                            │ (FlightRadar24)  │
+                                                            └──────────────────┘
 ```
 
 ---
 
-## ⚙️ 2. Çalışma Mekanizması ve Katmanlar (Adım Adım)
+## ⚙️ 2. Step-by-Step Layer Breakdown
 
-Proje 3 temel katmandan oluşur:
+The project is architected into 3 decoupled layers:
 
-### 1. Katman: Veri Katmanı (`flight_service.py`)
-FlightRadar24 canlı telemetri ağına bağlanır ve dünya genelindeki 15.000+ uçuş arasından verileri çeker:
-* **Çok Katmanlı Global Arama:**
-  1. `fr_api.search(query)` ile FlightRadar'ın global indeksinden uçağın canlı `flight_id` değeri yakalanır.
-  2. `fr_api.get_flight_details()` ile anlık GPS koordinatları, irtifa izi (`trail`) ve uçak modeli çekilir.
-  3. Çağrı kodu (`THY9UC`), sefer no (`TK2167`) ve tescil (`TC-JYA`) birbirine otomatik eşleştirilir.
-* **Birim Dönüşümleri & Geometri:** Hız knot'tan km/s'ye, irtifa feet'ten metreye dönüştürülür. Haversine formülü ile şehir koordinatlarına olan mesafe anlık hesaplanır.
+### Layer 1: Data & Telemetry Engine (`flight_service.py`)
+Connects directly to the live FlightRadar24 network to query over 15,000+ active airborne aircraft globally:
+* **Multi-Tiered Global Search:**
+  1. `fr_api.search(query)` looks up FlightRadar's global search index to pinpoint the exact live `flight_id`.
+  2. `fr_api.get_flight_details()` pulls real-time GPS coordinates, altitude/speed breadcrumbs (`trail`), and exact aircraft model information.
+  3. Seamlessly resolves callsigns (`THY9UC`), flight numbers (`TK2167`), and tail registrations (`TC-JYA`).
+* **Unit Conversions & Geometrics:** Converts knots to km/h, feet to meters, and computes distance from coordinates using the Haversine formula.
 
-### 2. Katman: MCP Sunucu Katmanı (`server.py`)
-Python fonksiyonlarını yapay zekanın anlayacağı evrensel MCP standardına dönüştürür:
-* **`@mcp_server.tool()`:** Fonksiyon docstring ve tip tanımlarından otomatik JSON-RPC şeması üretir.
-* **Streamable HTTP (`/mcp`):** Sunucu `http://localhost:8000/mcp` adresi üzerinden Streamable HTTP standardıyla yayın yapar.
-* **Canlı Web Dashboard (`http://localhost:8000`):** Tarayıcı üzerinden sunucu durumunu ve dünyada en çok takip edilen ilk 5 uçuşu gösterir.
+### Layer 2: MCP Server Layer (`server.py`)
+Exposes Python functions via the Model Context Protocol (MCP):
+* **`@mcp_server.tool()`:** Generates JSON Schema definitions from docstrings and parameter type hints.
+* **Streamable HTTP (`/mcp`):** Serves tools via Streamable HTTP at `http://localhost:8000/mcp` for local and remote clients.
+* **Live Web Dashboard (`http://localhost:8000`):** Interactive status monitor displaying registered MCP tools and globally top-tracked live flights.
 
-### 3. Katman: Gemini İstemci Katmanı (`gemini_client.py`)
-Kullanıcı ile yapay zeka arasındaki iletişimi yönetir:
-* **Dinamik Araç Keşfi:** MCP sunucusundaki araçları otomatik olarak Gemini `FunctionDeclaration` nesnelerine dönüştürür.
-* **Sıfır Halüsinasyon (`temperature=0.0`):** Katı sistem talimatlarıyla modelin yalnızca gelen JSON verisini yorumlaması sağlanır.
-* **Hata Toleransı (Fallback):** Model yoğunluklarında otomatik yeniden deneme ve model yedekleme (`gemini-3.7-flash` ➔ `gemini-3.5-flash-lite` ➔ `gemini-2.5-flash`) mekanizması çalışır.
+### Layer 3: Gemini AI Client Layer (`gemini_client.py`)
+Handles the conversational interface between the user, Gemini AI, and the MCP server:
+* **Dynamic Tool Discovery:** Automatically converts MCP tool definitions into Gemini `FunctionDeclaration` objects upon connection.
+* **Zero Hallucination (`temperature=0.0`):** Strict system instructions guarantee that Gemini grounds answers only in the returned JSON telemetry.
+* **Fault Tolerance & Fallback:** Automatically handles transient 503/429 spikes by retrying and falling back to alternative models (`gemini-3.7-flash` ➔ `gemini-3.5-flash-lite` ➔ `gemini-2.5-flash`).
 
 ---
 
-## 📋 Tanımlı MCP Uçuş Araçları (Tools)
+## 📋 Registered MCP Aviation Tools
 
-| Araç Adı | Parametreler | Açıklama |
+| Tool Name | Parameters | Description |
 | :--- | :--- | :--- |
-| **`get_flight_info`** | `query: str` | Uçuş no (`TK10`), çağrı kodu (`THY9UC`) veya kuyruk tescilinden (`TC-JYA`) anlık konum, irtifa, hız, rota ve uçak modelini getirir. |
-| **`search_airline_flights`** | `airline_code: str`, `limit: int?` | Havayolu koduyla (`THY`, `PGT`, `BAW`, `DLH`, `UAE`) havadaki tüm aktif uçakları listeler. |
-| **`get_flights_over_region`** | `latitude: float`, `longitude: float`, `radius_km: float?` | Belirtilen koordinat ve yarıçap çevresindeki hava sahasını tarar (örn: İstanbul semaları). |
-| **`get_most_tracked_flights`** | `limit: int?` | Dünyada anlık olarak Flightradar24'te en çok takip edilen ilk 10 uçuşu listeler. |
-| **`get_airport_info`** | `airport_code: str` | IATA/ICAO koduna göre havalimanı detaylarını (`IST`, `SAW`, `ESB`, `LHR` vb.) getirir. |
+| **`get_flight_info`** | `query: str` | Retrieves live telemetry, altitude (ft/m), ground speed (kts/kmh), heading, route, and aircraft model by flight number (`TK10`), callsign (`THY9UC`), or registration (`TC-JYA`). |
+| **`search_airline_flights`** | `airline_code: str`, `limit: int?` | Lists all active airborne flights for an airline by ICAO/IATA code (`THY`, `PGT`, `BAW`, `DLH`, `UAE`). |
+| **`get_flights_over_region`** | `latitude: float`, `longitude: float`, `radius_km: float?` | Scans airspace within a given radius (km) around specified coordinates (e.g. Istanbul airspace). |
+| **`get_most_tracked_flights`** | `limit: int?` | Fetches the top live most-tracked flights in the world on FlightRadar24. |
+| **`get_airport_info`** | `airport_code: str` | Retrieves airport coordinates, city, country, and elevation by IATA/ICAO code (`IST`, `SAW`, `ESB`, `LHR`, `JFK`, etc.). |
 
 ---
 
-## 🛠️ Proje Dosya Yapısı
+## 🛠️ Project Structure
 
 ```text
 Semalar/
-├── flight_service.py      # Canlı FlightRadar24 API entegrasyonu ve telemetri motoru
+├── flight_service.py      # Live FlightRadar24 API & telemetry search engine
 ├── server.py              # Streamable HTTP MCP Server & Web Dashboard (/ & /mcp)
-├── gemini_client.py       # Gemini API ile Remote MCP Server'ı bağlayan havacılık istemcisi
-├── test_flight_mcp.py     # MCP araçlarını doğrudan test eden otomatik test betiği
-├── requirements.txt       # Gerekli Python bağımlılıkları
-├── .env                   # Gemini API Key ve Sunucu URL ayarları
-├── .env.example           # Örnek konfigürasyon dosyası
-├── .gitignore             # Git dışı bırakılacak dosyalar
-└── README.md              # Proje dökümantasyonu
+├── gemini_client.py       # Gemini AI client with MCP tool calling
+├── test_flight_mcp.py     # Automated test script for MCP flight tools
+├── requirements.txt       # Python dependencies
+├── .env                   # API keys and server configuration
+├── .env.example           # Example environment template
+├── .gitignore             # Git ignored files
+└── README.md              # Project documentation
 ```
 
 ---
 
-## 🚀 Kurulum ve Çalıştırma Adımları
+## 🚀 Getting Started
 
-### 1. Adım: Bağımlılıkları Yükleyin
+### Step 1: Install Dependencies
 ```bash
-# Sanal ortamı aktif edin (macOS / Linux)
+# Activate virtual environment (macOS / Linux)
 source .venv/bin/activate
 
-# Paketleri yükleyin
+# Install requirements
 pip install -r requirements.txt
 ```
 
-### 2. Adım: .env Dosyasını Yapılandırın
-`.env` dosyasını açıp [Google AI Studio](https://aistudio.google.com/app/apikey)'dan aldığınız API anahtarınızı girin:
+### Step 2: Configure Environment (`.env`)
+Create/edit `.env` and add your [Google AI Studio](https://aistudio.google.com/app/apikey) API key:
 ```env
 GEMINI_API_KEY=your_gemini_api_key_here
 GEMINI_MODEL=gemini-3.7-flash
@@ -104,26 +104,26 @@ PUBLIC_MCP_URL=http://localhost:8000/mcp
 
 ---
 
-### 3. Adım: Sistemi Çalıştırma
+### Step 3: Run the System
 
-#### 💻 1. Terminal: MCP Sunucusunu Başlatın
+#### 💻 Terminal 1: Start MCP Server
 ```bash
 python server.py
 ```
 * **MCP Endpoint:** `http://localhost:8000/mcp`
-* **Canlı Web Dashboard:** `http://localhost:8000`
+* **Live Web Dashboard:** `http://localhost:8000`
 
-#### 💻 2. Terminal: Gemini İstemcisini Çalıştırın
+#### 💻 Terminal 2: Start Gemini Client
 ```bash
 python gemini_client.py
 ```
 
 ---
 
-## 💬 Örnek Doğal Dil Soruları
+## 💬 Sample Queries
 
-* `THY9UC uçağının bilgileri nedir ve şu an hangi şehir üzerinde?` ➡️ `get_flight_info(query="THY9UC")`
-* `Dünyada şu an en çok takip edilen ilk 3 uçuş hangisi ve modelleri ne?` ➡️ `get_most_tracked_flights(limit=3)`
-* `Pegasus'un (PGT) havadaki aktif uçaklarından 3 tanesini listele` ➡️ `search_airline_flights(airline_code="PGT")`
-* `İstanbul (41.0082, 28.9784) semalarında 100 km içinde uçan uçaklar hangileri?` ➡️ `get_flights_over_region(...)`
-* `IST ve SAW havalimanları hakkında detaylı bilgi ver` ➡️ `get_airport_info(airport_code="IST")`
+* `What are the details of flight THY9UC and what city is it currently flying over?` ➡️ `get_flight_info(query="THY9UC")`
+* `What are the top 3 most tracked flights in the world right now and what aircraft are they flying?` ➡️ `get_most_tracked_flights(limit=3)`
+* `List 3 active airborne flights operated by Pegasus (PGT)` ➡️ `search_airline_flights(airline_code="PGT")`
+* `Show flights within 100 km of Istanbul (41.0082, 28.9784)` ➡️ `get_flights_over_region(...)`
+* `Provide details for Istanbul Airport (IST)` ➡️ `get_airport_info(airport_code="IST")`

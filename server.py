@@ -16,7 +16,7 @@ if sys.platform == "win32":
 
 # Create the MCP Server instance
 mcp_server = MCPServer(
-    name="flight-radar-mcp",
+    name="semalar-flight-mcp",
     description="Streamable HTTP MCP Server providing live FlightRadar24 aircraft telemetry, flight tracking, and airport tools."
 )
 
@@ -98,15 +98,15 @@ async def home_dashboard(request):
         """
 
     if not tracked_rows_html:
-        tracked_rows_html = "<tr><td colspan='5' style='text-align:center; color:#94a3b8;'>Canlı uçuş verisi alınıyor...</td></tr>"
+        tracked_rows_html = "<tr><td colspan='5' style='text-align:center; color:#94a3b8;'>Fetching live flight data...</td></tr>"
 
     html_content = rf"""
     <!DOCTYPE html>
-    <html lang="tr">
+    <html lang="en">
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Flight Radar MCP Server</title>
+        <title>Semalar — Flight Radar MCP Server</title>
         <link rel="preconnect" href="https://fonts.googleapis.com">
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
@@ -283,49 +283,49 @@ async def home_dashboard(request):
         <div class="container">
             <div class="card">
                 <div class="header-bar">
-                    <h1>✈️ FlightRadar24 MCP Server</h1>
-                    <span class="badge-live"><div class="pulse-dot"></div> CANLI TELEMETRİ</span>
+                    <h1>✈️ Semalar — Flight Radar MCP Server</h1>
+                    <span class="badge-live"><div class="pulse-dot"></div> LIVE TELEMETRY</span>
                 </div>
-                <p>Canlı FlightRadar24 uçuş takibi, uçak modelleri, coğrafi radar taraması ve havalimanı verilerini Gemini & MCP istemcilerine sunan Model Context Protocol servisi.</p>
+                <p>Model Context Protocol service delivering live FlightRadar24 ADS-B telemetry, aircraft specifications, regional radar airspace scanning, and airport info to AI models.</p>
                 
                 <div class="endpoint-box">
                     <span>📡 <strong>MCP Endpoint:</strong> http://localhost:8000/mcp</span>
                     <span style="color: #64748b; font-size: 12px;">Streamable HTTP</span>
                 </div>
 
-                <h3 style="margin-top: 24px; font-size: 16px; color: #e2e8f0;">🛠️ Tanımlı Havacılık MCP Araçları</h3>
+                <h3 style="margin-top: 24px; font-size: 16px; color: #e2e8f0;">🛠️ Registered Aviation MCP Tools</h3>
                 <div class="tools-grid">
                     <div class="tool-card">
                         <div class="tool-name">get_flight_info(query)</div>
-                        <div class="tool-desc">Uçuş no (TK10), çağrı adı (THY10) veya kuyruk tescilinden (TC-LJA) anlık konum, irtifa, hız ve uçak modelini getirir.</div>
+                        <div class="tool-desc">Retrieves real-time telemetry, altitude, speed, route, and aircraft model by flight number, callsign, or registration.</div>
                     </div>
                     <div class="tool-card">
                         <div class="tool-name">search_airline_flights(airline_code)</div>
-                        <div class="tool-desc">Havayolu ICAO/IATA koduyla (THY, PGT, BAW, DLH) havadaki tüm aktif uçakları listeler.</div>
+                        <div class="tool-desc">Lists all active airborne flights for an airline by ICAO/IATA code (e.g. THY, PGT, BAW, DLH).</div>
                     </div>
                     <div class="tool-card">
                         <div class="tool-name">get_flights_over_region(lat, lon, radius)</div>
-                        <div class="tool-desc">Belirtilen enlem/boylam ve yarıçap (km) çevresindeki hava sahasını tarar (örn: İstanbul semaları).</div>
+                        <div class="tool-desc">Scans airspace within a given radius (km) around specified coordinates.</div>
                     </div>
                     <div class="tool-card">
                         <div class="tool-name">get_most_tracked_flights(limit)</div>
-                        <div class="tool-desc">Dünya genelinde Flightradar24'te anlık olarak en çok takip edilen ilk 10 uçuşu listeler.</div>
+                        <div class="tool-desc">Fetches globally top-tracked live flights on FlightRadar24.</div>
                     </div>
                     <div class="tool-card">
                         <div class="tool-name">get_airport_info(airport_code)</div>
-                        <div class="tool-desc">IATA/ICAO koduna göre havalimanı detayları (IST, SAW, ESB, LHR vb.).</div>
+                        <div class="tool-desc">Airport details and coordinates by IATA/ICAO code (IST, SAW, ESB, LHR, etc.).</div>
                     </div>
                 </div>
 
-                <h3 style="margin-top: 28px; font-size: 16px; color: #e2e8f0;">🔥 Dünyada Şu An En Çok Takip Edilen Uçuşlar (Canlı)</h3>
+                <h3 style="margin-top: 28px; font-size: 16px; color: #e2e8f0;">🔥 Top Most Tracked Flights Globally (Live)</h3>
                 <table>
                     <thead>
                         <tr>
-                            <th>Uçuş No</th>
-                            <th>Çağrı Kodu</th>
-                            <th>Rota</th>
-                            <th>Uçak Tipi</th>
-                            <th>Canlı Takipçi</th>
+                            <th>Flight No</th>
+                            <th>Callsign</th>
+                            <th>Route</th>
+                            <th>Aircraft Model</th>
+                            <th>Live Trackers</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -334,8 +334,8 @@ async def home_dashboard(request):
                 </table>
 
                 <div style="margin-top: 24px;" class="instruction-card">
-                    💡 <strong>Doğal Dil ile Uçuş Sorgulamak İçin:</strong><br>
-                    Terminalde <code>.venv/bin/python gemini_client.py</code> komutunu çalıştırarak Türkçe veya İngilizce soru sorabilirsiniz.
+                    💡 <strong>To query with natural language:</strong><br>
+                    Run <code>python gemini_client.py</code> in a second terminal to ask questions in Turkish or English.
                 </div>
             </div>
         </div>
@@ -350,7 +350,7 @@ app.add_route("/", home_dashboard, methods=["GET"])
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("✈️ Starting Flight Radar MCP Server on http://0.0.0.0:8000/mcp")
+    print("✈️ Starting Semalar MCP Server on http://0.0.0.0:8000/mcp")
     print("🌐 Web Dashboard: http://localhost:8000")
     print("=" * 60)
     uvicorn.run(app, host="0.0.0.0", port=8000)
