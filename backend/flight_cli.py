@@ -1,7 +1,13 @@
 import os
 import sys
 import asyncio
-from flight_agent import ask_flight_agent, get_agent_info, LLM_PROVIDER, PUBLIC_MCP_URL
+
+# Ensure backend directory is in sys.path
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
+
+from flight_agent import ask_flight_agent, get_agent_info
 
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8")
@@ -9,7 +15,7 @@ if sys.platform == "win32":
 
 async def execute_cli_query(query: str):
     print(f"\n💬 Soru: \"{query}\"")
-    print(f"📡 AI modeline iletiliyor ve canlı MCP araçları kontrol ediliyor...")
+    print(f"📡 AI modeline iletiliyor ve canlı MCP telemetri araçları kontrol ediliyor...")
     
     res = await ask_flight_agent(query)
     

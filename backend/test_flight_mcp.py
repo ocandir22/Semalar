@@ -38,13 +38,6 @@ async def main():
             print("Result:")
             print(res_airport.content[0].text if res_airport.content else res_airport)
 
-            # 4. Call search_airline_flights(airline_code='THY', limit=2)
-            print("\n" + "=" * 50)
-            print("Calling search_airline_flights(airline_code='THY', limit=2)...")
-            res_airline = await session.call_tool("search_airline_flights", {"airline_code": "THY", "limit": 2})
-            print("Result:")
-            print(res_airline.content[0].text if res_airline.content else res_airline)
-
 
 if __name__ == "__main__":
     asyncio.run(main())

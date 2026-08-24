@@ -8,6 +8,12 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette.staticfiles import StaticFiles
 import uvicorn
 
+# Ensure backend directory is in sys.path
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+PARENT_DIR = os.path.dirname(BASE_DIR)
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
+
 from flight_service import (
     get_flight_info as fetch_flight_info,
     search_airline_flights as fetch_airline_flights,
@@ -147,8 +153,8 @@ async def api_status(request):
     })
 
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-FRONTEND_DIR = os.path.join(BASE_DIR, "frontend")
+# Frontend Directory Resolution
+FRONTEND_DIR = os.path.join(PARENT_DIR, "frontend")
 
 
 async def serve_index(request):
