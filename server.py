@@ -1,8 +1,13 @@
+import os
 import sys
+import json
 from typing import Optional, List, Dict, Any
 from mcp.server import MCPServer
-from starlette.responses import HTMLResponse
+from starlette.responses import HTMLResponse, JSONResponse, FileResponse
+from starlette.middleware.cors import CORSMiddleware
+from starlette.staticfiles import StaticFiles
 import uvicorn
+
 from flight_service import (
     get_flight_info as fetch_flight_info,
     search_airline_flights as fetch_airline_flights,
@@ -10,6 +15,7 @@ from flight_service import (
     get_most_tracked_flights as fetch_most_tracked_flights,
     get_airport_info as fetch_airport_info
 )
+from flight_agent import ask_flight_agent, get_agent_info
 
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8")
@@ -80,277 +86,94 @@ def get_airport_info(airport_code: str) -> Dict[str, Any]:
 # Expose Streamable HTTP ASGI app (Starlette) on /mcp endpoint
 app = mcp_server.streamable_http_app()
 
-
-async def home_dashboard(request):
-    top_tracked_res = fetch_most_tracked_flights(limit=5)
-    top_flights = top_tracked_res.get("most_tracked_flights", []) if isinstance(top_tracked_res, dict) else []
-
-    tracked_rows_html = ""
-    for f in top_flights:
-        tracked_rows_html += f"""
-        <tr>
-            <td><strong style="color: #38bdf8;">{f.get('flight_number') or f.get('callsign') or 'N/A'}</strong></td>
-            <td>{f.get('callsign') or '-'}</td>
-            <td><span class="route-badge">{f.get('route')}</span></td>
-            <td>{f.get('aircraft_type') or f.get('model') or '-'}</td>
-            <td style="color: #f59e0b; font-weight: bold;">👥 {f.get('live_trackers', 0):,}</td>
-        </tr>
-        """
-
-    if not tracked_rows_html:
-        tracked_rows_html = "<tr><td colspan='5' style='text-align:center; color:#94a3b8;'>Fetching live flight data...</td></tr>"
-
-    html_content = rf"""
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Semalar — Flight Radar MCP Server</title>
-        <link rel="preconnect" href="https://fonts.googleapis.com">
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-        <style>
-            :root {{
-                --bg-main: #090d16;
-                --card-bg: #111827;
-                --border-color: #1f293d;
-                --accent-blue: #0ea5e9;
-                --accent-glow: rgba(14, 165, 233, 0.15);
-                --accent-green: #10b981;
-                --accent-amber: #f59e0b;
-                --text-primary: #f8fafc;
-                --text-secondary: #94a3b8;
-            }}
-            * {{ box-sizing: border-box; }}
-            body {{
-                font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-                background-color: var(--bg-main);
-                background-image: 
-                    radial-gradient(circle at 10% 20%, rgba(14, 165, 233, 0.08) 0%, transparent 40%),
-                    radial-gradient(circle at 90% 80%, rgba(16, 185, 129, 0.05) 0%, transparent 40%);
-                color: var(--text-primary);
-                margin: 0;
-                padding: 40px 20px;
-                display: flex;
-                justify-content: center;
-                min-height: 100vh;
-            }}
-            .container {{
-                max-width: 900px;
-                width: 100%;
-            }}
-            .card {{
-                background: var(--card-bg);
-                border: 1px solid var(--border-color);
-                border-radius: 16px;
-                padding: 32px;
-                box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.5);
-                margin-bottom: 24px;
-            }}
-            .header-bar {{
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                margin-bottom: 20px;
-                flex-wrap: wrap;
-                gap: 12px;
-            }}
-            .badge-live {{
-                display: inline-flex;
-                align-items: center;
-                gap: 6px;
-                background: rgba(16, 185, 129, 0.12);
-                border: 1px solid rgba(16, 185, 129, 0.3);
-                color: #34d399;
-                font-weight: 600;
-                font-size: 13px;
-                padding: 6px 14px;
-                border-radius: 9999px;
-            }}
-            .pulse-dot {{
-                width: 8px;
-                height: 8px;
-                background-color: #10b981;
-                border-radius: 50%;
-                box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
-                animation: pulse 1.8s infinite;
-            }}
-            @keyframes pulse {{
-                0% {{ transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }}
-                70% {{ transform: scale(1); box-shadow: 0 0 0 8px rgba(16, 185, 129, 0); }}
-                100% {{ transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }}
-            }}
-            h1 {{
-                margin: 0;
-                font-size: 26px;
-                font-weight: 700;
-                color: #ffffff;
-                display: flex;
-                align-items: center;
-                gap: 10px;
-            }}
-            p {{ color: var(--text-secondary); line-height: 1.6; margin: 8px 0; }}
-            .endpoint-box {{
-                background: #0b111e;
-                border: 1px solid #24324d;
-                padding: 14px 18px;
-                border-radius: 10px;
-                font-family: 'JetBrains Mono', monospace;
-                color: var(--accent-blue);
-                font-size: 14px;
-                margin: 18px 0;
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-            }}
-            .tools-grid {{
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-                gap: 12px;
-                margin: 20px 0;
-            }}
-            .tool-card {{
-                background: #0d1424;
-                border: 1px solid #1a263d;
-                border-radius: 10px;
-                padding: 14px;
-                border-left: 3px solid var(--accent-blue);
-                transition: transform 0.15s ease, border-color 0.15s ease;
-            }}
-            .tool-card:hover {{
-                transform: translateY(-2px);
-                border-left-color: #38bdf8;
-                border-color: #2b3d61;
-            }}
-            .tool-name {{
-                font-family: 'JetBrains Mono', monospace;
-                font-size: 13px;
-                font-weight: 600;
-                color: #38bdf8;
-                margin-bottom: 4px;
-            }}
-            .tool-desc {{
-                font-size: 12px;
-                color: var(--text-secondary);
-                line-height: 1.4;
-            }}
-            table {{
-                width: 100%;
-                border-collapse: collapse;
-                margin-top: 14px;
-                font-size: 13px;
-            }}
-            th {{
-                text-align: left;
-                padding: 10px 12px;
-                background: #0b111e;
-                color: var(--text-secondary);
-                font-weight: 600;
-                border-bottom: 1px solid var(--border-color);
-            }}
-            td {{
-                padding: 10px 12px;
-                border-bottom: 1px solid #1a263d;
-            }}
-            .route-badge {{
-                background: rgba(14, 165, 233, 0.1);
-                color: #38bdf8;
-                padding: 3px 8px;
-                border-radius: 4px;
-                font-family: 'JetBrains Mono', monospace;
-                font-size: 12px;
-            }}
-            .instruction-card {{
-                background: rgba(14, 165, 233, 0.05);
-                border: 1px solid rgba(14, 165, 233, 0.2);
-                border-radius: 10px;
-                padding: 16px 20px;
-                font-size: 13px;
-                color: #bae6fd;
-            }}
-            code {{
-                background: #0f172a;
-                padding: 2px 6px;
-                border-radius: 4px;
-                font-family: 'JetBrains Mono', monospace;
-                color: #38bdf8;
-                font-size: 12px;
-            }}
-        </style>
-    </head>
-    <body>
-        <div class="container">
-            <div class="card">
-                <div class="header-bar">
-                    <h1>✈️ Semalar — Flight Radar MCP Server</h1>
-                    <span class="badge-live"><div class="pulse-dot"></div> LIVE TELEMETRY</span>
-                </div>
-                <p>Model Context Protocol service delivering live FlightRadar24 ADS-B telemetry, aircraft specifications, regional radar airspace scanning, and airport info to AI models.</p>
-                
-                <div class="endpoint-box">
-                    <span>📡 <strong>MCP Endpoint:</strong> http://localhost:8000/mcp</span>
-                    <span style="color: #64748b; font-size: 12px;">Streamable HTTP</span>
-                </div>
-
-                <h3 style="margin-top: 24px; font-size: 16px; color: #e2e8f0;">🛠️ Registered Aviation MCP Tools</h3>
-                <div class="tools-grid">
-                    <div class="tool-card">
-                        <div class="tool-name">get_flight_info(query)</div>
-                        <div class="tool-desc">Retrieves real-time telemetry, altitude, speed, route, and aircraft model by flight number, callsign, or registration.</div>
-                    </div>
-                    <div class="tool-card">
-                        <div class="tool-name">search_airline_flights(airline_code)</div>
-                        <div class="tool-desc">Lists all active airborne flights for an airline by ICAO/IATA code (e.g. THY, PGT, BAW, DLH).</div>
-                    </div>
-                    <div class="tool-card">
-                        <div class="tool-name">get_flights_over_region(lat, lon, radius)</div>
-                        <div class="tool-desc">Scans airspace within a given radius (km) around specified coordinates.</div>
-                    </div>
-                    <div class="tool-card">
-                        <div class="tool-name">get_most_tracked_flights(limit)</div>
-                        <div class="tool-desc">Fetches globally top-tracked live flights on FlightRadar24.</div>
-                    </div>
-                    <div class="tool-card">
-                        <div class="tool-name">get_airport_info(airport_code)</div>
-                        <div class="tool-desc">Airport details and coordinates by IATA/ICAO code (IST, SAW, ESB, LHR, etc.).</div>
-                    </div>
-                </div>
-
-                <h3 style="margin-top: 28px; font-size: 16px; color: #e2e8f0;">🔥 Top Most Tracked Flights Globally (Live)</h3>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Flight No</th>
-                            <th>Callsign</th>
-                            <th>Route</th>
-                            <th>Aircraft Model</th>
-                            <th>Live Trackers</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {tracked_rows_html}
-                    </tbody>
-                </table>
-
-                <div style="margin-top: 24px;" class="instruction-card">
-                    💡 <strong>To query with natural language:</strong><br>
-                    Run <code>python gemini_client.py</code> in a second terminal to ask questions in Turkish or English.
-                </div>
-            </div>
-        </div>
-    </body>
-    </html>
-    """
-    return HTMLResponse(content=html_content)
+# Enable CORS for Frontend communication
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
-app.add_route("/", home_dashboard, methods=["GET"])
+# ============================================================
+# REST API Endpoints for Web Chat UI & Telemetry
+# ============================================================
+
+async def api_chat(request):
+    """Processes incoming chat messages from the Web UI using AI + live MCP tools."""
+    try:
+        data = await request.json()
+        message = data.get("message", "").strip()
+        if not message:
+            return JSONResponse({"status": "error", "error": "Boş mesaj gönderilemez."}, status_code=400)
+        
+        result = await ask_flight_agent(message, mcp_url="http://localhost:8000/mcp")
+        return JSONResponse(result)
+    except Exception as e:
+        return JSONResponse({
+            "status": "error",
+            "error": str(e),
+            "answer": f"İstek işlenirken sunucu hatası oluştu: {e}"
+        }, status_code=500)
+
+
+async def api_tracked(request):
+    """Returns top live tracked flights from FlightRadar24."""
+    try:
+        limit = int(request.query_params.get("limit", 10))
+        result = fetch_most_tracked_flights(limit=limit)
+        return JSONResponse(result)
+    except Exception as e:
+        return JSONResponse({"status": "error", "error": str(e)}, status_code=500)
+
+
+async def api_status(request):
+    """Returns server and agent status info."""
+    agent_info = get_agent_info()
+    return JSONResponse({
+        "status": "online",
+        "service": "Semalar Flight MCP & AI Assistant",
+        "provider": agent_info["provider"],
+        "model": agent_info["model"],
+        "mcp_url": "http://localhost:8000/mcp",
+        "tools": [
+            {"name": "get_flight_info", "description": "Canlı uçuş ve telemetri arama (TK10, TC-JYA vb.)"},
+            {"name": "search_airline_flights", "description": "Havayolu aktif uçuşları (THY, PGT vb.)"},
+            {"name": "get_flights_over_region", "description": "Bölgesel radar tarama (enlem, boylam, yarıçap)"},
+            {"name": "get_most_tracked_flights", "description": "Dünyada en çok izlenen canlı uçuşlar"},
+            {"name": "get_airport_info", "description": "Havalimanı bilgileri ve koordinatları (IST, SAW vb.)"}
+        ]
+    })
+
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+FRONTEND_DIR = os.path.join(BASE_DIR, "frontend")
+
+
+async def serve_index(request):
+    """Serves the React frontend index.html."""
+    index_file = os.path.join(FRONTEND_DIR, "index.html")
+    if os.path.exists(index_file):
+        return FileResponse(index_file)
+    return HTMLResponse("<h1>Semalar Frontend klasörü bulunamadı.</h1>")
+
+
+app.add_route("/api/chat", api_chat, methods=["POST"])
+app.add_route("/api/tracked", api_tracked, methods=["GET"])
+app.add_route("/api/status", api_status, methods=["GET"])
+app.add_route("/", serve_index, methods=["GET"])
+
+# Mount frontend directory for static assets
+if os.path.exists(FRONTEND_DIR):
+    app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="frontend_static")
 
 
 if __name__ == "__main__":
-    print("=" * 60)
-    print("✈️ Starting Semalar MCP Server on http://0.0.0.0:8000/mcp")
-    print("🌐 Web Dashboard: http://localhost:8000")
-    print("=" * 60)
+    print("=" * 65)
+    print("✈️ Semalar — Canlı Uçuş Radarı & AI Havacılık Asistanı")
+    print("📡 MCP Endpoint  : http://localhost:8000/mcp")
+    print("💬 Web Chat UI    : http://localhost:8000")
+    print("⚡ REST API       : http://localhost:8000/api/chat")
+    print("=" * 65)
     uvicorn.run(app, host="0.0.0.0", port=8000)
