@@ -11,7 +11,11 @@ from mcp.client.streamable_http import streamable_http_client
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8")
 
-# Load environment variables
+# Load environment variables from parent directory or current directory
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+PARENT_DIR = os.path.dirname(BASE_DIR)
+load_dotenv(os.path.join(PARENT_DIR, ".env"))
+load_dotenv(os.path.join(BASE_DIR, ".env"))
 load_dotenv()
 
 # Active Provider: "gemini", "groq", "openrouter", "ollama", "openai", "deepseek"
@@ -234,16 +238,7 @@ async def call_gemini_with_retry(genai_client, model: str, contents: list, confi
 # ============================================================
 
 async def ask_flight_agent(user_query: str, mcp_url: Optional[str] = None) -> Dict[str, Any]:
-    """Processes a natural language query using the configured LLM and live MCP tools.
-    
-    Returns a dictionary containing:
-        - status: 'success' | 'error'
-        - answer: str (the formatted response)
-        - tool_calls: list of tool calls made with args and outputs
-        - model: active model name
-        - provider: active provider name
-        - error: error message if status == 'error'
-    """
+    """Processes a natural language query using the configured LLM and live MCP tools."""
     target_mcp_url = mcp_url or PUBLIC_MCP_URL
     provider = LLM_PROVIDER
     tool_calls_executed = []

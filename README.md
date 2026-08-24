@@ -13,20 +13,20 @@ To prevent hallucination, the system relies entirely on **Tool Calling (Function
        │                      KULLANICI ARAYÜZLERİ                   │
        │   ┌─────────────────────────┐    ┌──────────────────────┐   │
        │   │  React Web UI (Tarayıcı)│    │  Terminal CLI (Konsol)│   │
-       │   │  http://localhost:8000  │    │  gemini_client.py    │   │
+       │   │  http://localhost:8000  │    │  backend/flight_cli  │   │
        │   └────────────┬────────────┘    └──────────┬───────────┘   │
        └────────────────┼────────────────────────────┼───────────────┘
                         │ HTTP /api/chat             │ Doğrudan Çağrı
                         ▼                            ▼
        ┌─────────────────────────────────────────────────────────────┐
-       │               Ortak AI Motoru (flight_agent.py)             │
+       │             Ortak AI Motoru (backend/flight_agent.py)       │
        │   - Gemini 3.7 Flash / Groq / OpenAI / Ollama / DeepSeek   │
        │   - MCP Tool Çağrıları (Zero-Hallucination Telemetri)       │
        └──────────────────────────────┬──────────────────────────────┘
                                       │ (2) Tool Call (örn: get_flight_info)
                                       ▼
        ┌─────────────────────────────────────────────────────────────┐
-       │             MCP Server & Web Sunucusu (server.py)           │
+       │           MCP Server & Web Sunucusu (backend/server.py)     │
        │   - Streamable HTTP MCP (/mcp)                              │
        │   - REST API (/api/chat, /api/tracked, /api/status)         │
        │   - React Statik Web UI Sunumu                              │
@@ -34,20 +34,34 @@ To prevent hallucination, the system relies entirely on **Tool Calling (Function
                                       │ (3) Canlı Telemetri Sorgusu
                                       ▼
        ┌─────────────────────────────────────────────────────────────┐
-       │             Flight Service (flight_service.py)              │
+       │          Flight Service (backend/flight_service.py)         │
        │   - Canlı FlightRadar24 ADS-B Küresel Telemetri Ağı        │
        └─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## ⚙️ 2. Katman Yapısı & Dosyalar
+## 📁 2. Proje Yapısı
 
-* **`flight_service.py`**: Canlı FlightRadar24 API motoru (uçuş arama, irtifa/hız birim dönüşümleri, radar koordinat taraması).
-* **`flight_agent.py`**: Çoklu sağlayıcı destekli (Gemini, Groq, OpenRouter, Ollama, DeepSeek, OpenAI) ortak AI ve MCP araç çağırma motoru.
-* **`server.py`**: Starlette/Uvicorn tabanlı MCP sunucusu, REST API'leri ve React Web arayüzünü tek porttan (`http://localhost:8000`) sunar.
-* **`gemini_client.py`**: Terminalden canlı yazışma istemcisi (`FlightRadar [gemini] >`).
-* **`frontend/`**: Modern kokpit/radar tasarımlı React Web Arayüzü (Chat balonları, tool trace rozetleri, canlı en çok izlenen uçuşlar paneli).
+```text
+Semalar/
+├── backend/
+│   ├── server.py              # MCP Sunucusu, REST API & Web UI Sunumu
+│   ├── flight_agent.py        # Çoklu sağlayıcı destekli AI & MCP motoru
+│   ├── flight_service.py      # Canlı FlightRadar24 API ve telemetri motoru
+│   ├── flight_cli.py          # Terminal CLI interaktif istemcisi
+│   └── test_flight_mcp.py     # MCP araçları otomatik testi
+├── frontend/
+│   ├── index.html             # React Web UI giriş noktası
+│   ├── css/style.css          # Koyu mod kokpit/radar tasarım sistemi
+│   └── js/
+│       ├── app.jsx            # React ana uygulaması
+│       ├── api.js             # Backend API istemcisi
+│       └── components/        # Modüler React bileşenleri
+├── requirements.txt           # Python bağımlılıkları
+├── .env                       # API anahtarları ve model ayarları
+└── README.md                  # Proje dokümantasyonu
+```
 
 ---
 
@@ -67,35 +81,25 @@ To prevent hallucination, the system relies entirely on **Tool Calling (Function
 
 ### 🌐 Seçenek 1: Web Arayüzü (React UI) ile Çalıştırma (Önerilen)
 
-Yalnızca tek bir komutla sunucuyu ve web arayüzünü başlatın:
+Sunucuyu başlatın:
 ```bash
-python server.py
+python backend/server.py
 ```
-Ardından tarayıcınızda açın:
+Tarayıcınızda açın:
 👉 **`http://localhost:8000`**
-
-* Canlı AI Chatbot ile mesajlaşın.
-* Sağ panelde FlightRadar24'ün en çok izlenen canlı uçuşlarını anlık takip edin.
-* Tek tıkla uçuş detaylarını asistanınıza sorun.
 
 ---
 
 ### 💻 Seçenek 2: Terminal (CLI) Modunda Çalıştırma
 
-Eğer terminalden yazışmaya devam etmek isterseniz:
-
-1. Birinci terminalde sunucuyu başlatın:
-   ```bash
-   python server.py
-   ```
-2. İkinci terminalde istemciyi açın:
-   ```bash
-   python gemini_client.py
-   ```
-   * Veya doğrudan tek soru sorup çıkın:
-   ```bash
-   python gemini_client.py "TK10 nolu uçak şu an nerede ve modeli ne?"
-   ```
+Terminalden yazışmak için:
+```bash
+python backend/flight_cli.py
+```
+Veya doğrudan tek soru sorup çıkmak için:
+```bash
+python backend/flight_cli.py "THY10 nolu uçak şu an nerede ve modeli ne?"
+```
 
 ---
 
