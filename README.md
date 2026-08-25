@@ -69,15 +69,36 @@ Semalar/
 
 | Araç Adı | Parametreler | Açıklama |
 | :--- | :--- | :--- |
-| **`get_flight_info`** | `query: str` | Uçuş kodu (`TK10`), çağrı işareti (`THY9UC`) veya kuyruk tescili (`TC-JYA`) ile canlı koordinat, irtifa, hız ve uçak modeli getirir. |
-| **`search_airline_flights`** | `airline_code: str`, `limit: int?` | Havayolu koduna göre (örn: `THY`, `PGT`, `BAW`, `DLH`) havadaki aktif uçuşları listeler. |
-| **`get_flights_over_region`** | `latitude: float`, `longitude: float`, `radius_km: float?` | Belirli koordinatlar çevresindeki hava sahasını radar gibi tarar (örn: İstanbul hava sahası). |
-| **`get_most_tracked_flights`** | `limit: int?` | Dünyada anlık olarak FlightRadar24'te en çok izlenen canlı uçuşları getirir. |
-| **`get_airport_info`** | `airport_code: str` | IATA/ICAO koduyla (`IST`, `SAW`, `LHR`, `JFK`) havalimanı detayları ve koordinatlarını verir. |
+| **`get_flights_above_speed`** | `min_speed_kmh: float?`, `limit: int?` | Kafka akışından belirli bir hızın (örn: 800 km/s, 900 km/s) üzerindeki hızlı/süpersonik uçakları hız sırasıyla listeler. |
+| **`get_flight_from_kafka`** | `query: str` | Kafka 1200+ uçuş akış deposundan uçuş numarası veya tescil ile anlık alt-milisaniye telemetri getirir. |
+| **`get_flights_over_region_from_kafka`** | `latitude: float`, `longitude: float`, `radius_km: float?` | Kafka akışından belirli koordinat etrafındaki uçuşları radar gibi çeker. |
+| **`search_airline_from_kafka`** | `airline_code: str`, `limit: int?` | Kafka akışından havayolu uçuşlarını (THY, PGT, DLH vb.) filtreler. |
+| **`get_kafka_stream_stats`** | - | Kafka akışındaki uçuşların ortalama/maksimum hız ve irtifa istatistiklerini verir. |
+| **`get_flight_info`** | `query: str` | Uçuş kodu (`TK10`), çağrı işareti (`THY9UC`) veya kuyruk tescili (`TC-JYA`) ile canlı FlightRadar24 araması yapar. |
+| **`search_airline_flights`** | `airline_code: str`, `limit: int?` | Havayolu koduna göre canlı aktif uçuşları listeler. |
+| **`get_flights_over_region`** | `latitude: float`, `longitude: float`, `radius_km: float?` | Belirli koordinatlar çevresindeki hava sahasını FlightRadar'dan anlık tarar. |
+| **`get_most_tracked_flights`** | `limit: int?` | Dünyada anlık en çok izlenen uçuşları getirir. |
+| **`get_airport_info`** | `airport_code: str` | IATA/ICAO koduyla (`IST`, `SAW`, `LHR`, `JFK`) havalimanı detaylarını verir. |
 
 ---
 
-## 🚀 Çalıştırma Yöntemleri
+## ⚡ Kafka & Event Streaming Çalıştırma
+
+### 1. Docker ile Kafka & Kafka UI Başlatma:
+```bash
+docker compose up -d
+```
+* **Kafka UI:** 👉 **`http://localhost:8080`** (Topic ve mesajları tarayıcıdan izleyebilirsiniz)
+* **Kafka Broker:** `localhost:9092`
+
+### 2. Canlı 1200 Uçuş Verisini Toplayıp Kafka'ya Basma:
+```bash
+python backend/flight_producer.py
+```
+
+---
+
+## 🚀 Uygulamayı Çalıştırma Yöntemleri
 
 ### 🌐 Seçenek 1: Web Arayüzü (React UI) ile Çalıştırma (Önerilen)
 
@@ -98,15 +119,15 @@ python backend/flight_cli.py
 ```
 Veya doğrudan tek soru sorup çıkmak için:
 ```bash
-python backend/flight_cli.py "THY10 nolu uçak şu an nerede ve modeli ne?"
+python backend/flight_cli.py "Kafka akışında 900 km/s hızın üzerindeki en hızlı 2 uçağı listele"
 ```
 
 ---
 
 ## 💬 Örnek Sorular
 
+* `Kafka verilerinde 900 km/s hızın üzerindeki en hızlı uçakları ve modellerini listele.`
+* `Kafka akış istatistikleri neler? En hızlı uçak kaç km/s ile uçuyor?`
 * `THY10 nolu uçak şu an nerede, irtifası kaç ve modeli ne?`
 * `Dünyada şu an en çok takip edilen ilk 3 uçuş hangisi?`
 * `İstanbul (41.0082, 28.9784) semalarında uçan uçakları göster.`
-* `Pegasus'un (PGT) havadaki uçaklarını listele.`
-* `IST ve SAW havalimanı bilgileri nelerdir?`

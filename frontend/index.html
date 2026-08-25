@@ -3,27 +3,347 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Semalar — Canlı Uçuş Radarı & AI Havacılık Asistanı</title>
-    <meta name="description" content="FlightRadar24 ADS-B canlı telemetri ağı ve MCP destekli yapay zeka havacılık asistanı.">
+    <title>Semalar — 1. Proje: FlightRadar24 Canlı ADS-B Radarı & AI Asistanı</title>
+    <meta name="description" content="FlightRadar24 ADS-B canlı telemetri ağı ve MCP destekli yapay zeka havacılık kokpiti.">
     
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
     
-    <!-- Custom Cockpit Radar Design System -->
+    <!-- Cockpit Radar Design System -->
     <link rel="stylesheet" href="/static/css/style.css">
-
-    <!-- React 18 & ReactDOM 18 CDN -->
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <!-- Babel Standalone for in-browser JSX compilation -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+      .btn-switch-kafka {
+        background: linear-gradient(135deg, rgba(0, 240, 255, 0.15) 0%, rgba(14, 165, 233, 0.3) 100%);
+        color: #38bdf8;
+        border: 1.5px solid rgba(0, 240, 255, 0.5);
+        padding: 7px 18px;
+        border-radius: 9999px;
+        font-size: 12.5px;
+        font-weight: 700;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        transition: all 0.25s ease;
+        box-shadow: 0 0 15px rgba(0, 240, 255, 0.2);
+      }
+      .btn-switch-kafka:hover {
+        background: linear-gradient(135deg, rgba(0, 240, 255, 0.25) 0%, rgba(14, 165, 233, 0.45) 100%);
+        transform: translateY(-1px);
+        box-shadow: 0 0 20px rgba(0, 240, 255, 0.4);
+      }
+      .project-tag {
+        font-size: 11px;
+        background: rgba(239, 68, 68, 0.2);
+        color: #fca5a5;
+        border: 1px solid rgba(239, 68, 68, 0.4);
+        padding: 3px 10px;
+        border-radius: 6px;
+        font-weight: 700;
+      }
+    </style>
 </head>
 <body>
-    <div id="root"></div>
+    <div style="display: flex; flex-direction: column; height: 100vh;">
+        <!-- HEADER -->
+        <header class="app-header">
+            <div class="brand-section">
+                <div class="brand-icon">✈️</div>
+                <div>
+                    <div class="brand-title">
+                        SEMALAR
+                        <span class="project-tag">1. PROJE: CANLI FLIGHTRADAR RADARI</span>
+                    </div>
+                    <div class="brand-subtitle">FlightRadar24 ADS-B Live Telemetry & AI MCP Assistant</div>
+                </div>
+            </div>
 
-    <!-- Load React Application with Babel JSX compilation -->
-    <script type="text/babel" src="/static/js/app.jsx"></script>
+            <!-- DIRECT BUTTON TO 2. PROJECT KAFKA DASHBOARD -->
+            <div>
+                <a href="/kafka" class="btn-switch-kafka" title="2. Projeye Geç: Kafka 1200 Uçak Telemetri Havuzu & Hız Filtreleri">
+                    <span>⚡</span>
+                    <span>2. Proje: Kafka Telemetri Paneline Git (1200 Uçak)</span>
+                    <span style="font-size: 10px; background: rgba(0, 240, 255, 0.3); padding: 1px 6px; border-radius: 4px;">KAFKA ➔</span>
+                </a>
+            </div>
+
+            <div class="header-status-group">
+                <div class="status-badge live">
+                    <div class="pulse-dot"></div>
+                    ADS-B RADAR LIVE
+                </div>
+
+                <div class="status-badge provider" id="ai-model-badge">
+                    ✨ GEMINI (gemini-3.7-flash)
+                </div>
+
+                <button class="btn-icon" id="btn-clear-chat" title="Sohbeti Temizle">🗑️ Temizle</button>
+                <button class="btn-icon" id="btn-toggle-sidebar" title="Sağ Paneli Aç/Kapat">📡 Paneli Gizle</button>
+            </div>
+        </header>
+
+        <!-- MAIN COCKPIT CONTAINER -->
+        <main class="app-container">
+            <!-- CHAT COLUMN -->
+            <section class="chat-column">
+                <div class="chat-messages" id="chat-messages-container">
+                    <div class="welcome-hero">
+                        <h2>✈️ 1. Proje: FlightRadar24 Canlı Havacılık Radarı & AI Asistanı</h2>
+                        <p>
+                            FlightRadar24 ADS-B canlı veri ağına doğrudan MCP toolları ile bağlanın. 
+                            Uçuş numarası (örn: <strong>TK10</strong>), koordinat yarıçapı veya havalimanı telemetrisini anlık sorgulayın.
+                        </p>
+                        
+                        <div class="prompt-chips-container">
+                            <button class="prompt-chip" data-query="THY10 nolu uçak şu an nerede, irtifası kaç ve uçağın modeli ne?">📍 THY10 nerede?</button>
+                            <button class="prompt-chip" data-query="İstanbul (41.0082, 28.9784) semalarında 150 km yarıçapında uçan uçakları göster">🇹🇷 İstanbul Semaları</button>
+                            <button class="prompt-chip" data-query="Dünyada şu an FlightRadar24'te en çok takip edilen ilk 3 uçuş hangisi?">🔥 En Çok Takip Edilenler</button>
+                            <button class="prompt-chip" data-query="Kafka akışında 900 km/s hızın üzerindeki en hızlı uçakları listele">⚡ 900 km/s Üzeri Uçaklar</button>
+                            <button class="prompt-chip" data-query="IST (İstanbul Havalimanı) hakkında detaylı bilgi ver">🏢 IST Havalimanı</button>
+                        </div>
+                    </div>
+
+                    <div id="messages-list"></div>
+                    
+                    <div id="loading-indicator" class="message-row assistant" style="display: none;">
+                        <div class="message-sender-tag">✈️ Semalar Asistanı</div>
+                        <div class="typing-radar">
+                            <div class="radar-spinner"></div>
+                            <span>Canlı FlightRadar24 ADS-B ağı taranıyor...</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CHAT INPUT -->
+                <div class="chat-input-container">
+                    <div class="chat-input-wrapper">
+                        <input type="text" id="chat-input" class="chat-input" placeholder="Canlı uçuş numarası (örn: TK10), bölge veya havalimanı sorusu yazın..." autofocus>
+                    </div>
+                    <button id="btn-send-chat" class="btn-send">
+                        <span>Gönder</span>
+                        <span>🚀</span>
+                    </button>
+                </div>
+            </section>
+
+            <!-- RIGHT SIDEBAR (LIVE MOST-TRACKED FLIGHTS) -->
+            <aside class="radar-sidebar" id="radar-sidebar">
+                <div class="sidebar-header">
+                    <div class="sidebar-title">
+                        <span>🔥 Canlı En Çok İzlenenler</span>
+                    </div>
+                    <button class="btn-icon" id="btn-refresh-tracked" title="Listeyi Yenile">🔄</button>
+                </div>
+
+                <div class="sidebar-content">
+                    <div class="airport-widget">
+                        <div style="fontSize: 12px; font-weight: 600; color: #38bdf8; display: flex; align-items: center; gap: 6px;">
+                            <span>🏢</span>
+                            <span>Havalimanı Hızlı Sorgu</span>
+                        </div>
+                        <form id="airport-form" class="airport-input-group">
+                            <input type="text" id="airport-input" class="airport-input" placeholder="IATA/ICAO (örn: IST, SAW, LHR)" maxlength="4">
+                            <button type="submit" class="btn-icon" style="padding: 4px 10px; font-size: 11px;">Ara</button>
+                        </form>
+                    </div>
+
+                    <div id="tracked-flights-list" style="display: flex; flexDirection: column; gap: 10px;">
+                        <div style="text-align: center; color: #64748b; font-size: 13px; padding: 20px 0;">
+                            Canlı radar verisi çekiliyor...
+                        </div>
+                    </div>
+
+                    <div style="margin-top: auto; background: rgba(0, 240, 255, 0.03); border: 1px solid rgba(56, 189, 248, 0.15); border-radius: 8px; padding: 12px; font-size: 11.5px; color: #94a3b8;">
+                        <strong style="color: #38bdf8; display: block; margin-bottom: 4px;">🛠️ 11 Aktif MCP Aracı:</strong>
+                        FlightRadar canlı aramalar + Kafka 1200 uçuş hız, bölge ve istatistik filtreleri.
+                    </div>
+                </div>
+            </aside>
+        </main>
+    </div>
+
+    <!-- PURE NATIVE JAVASCRIPT FOR PROJECT 1 -->
+    <script>
+        const API_BASE = window.location.origin;
+        let isChatLoading = false;
+        let isSidebarOpen = true;
+
+        function formatMessageText(text) {
+            if (!text) return "";
+            return text
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/^• (.*$)/gim, '<div style="display:flex; gap:8px; margin:4px 0; padding-left:6px;"><span style="color:#38bdf8">✈</span><div>$1</div></div>')
+                .replace(/^- (.*$)/gim, '<div style="display:flex; gap:8px; margin:4px 0; padding-left:6px;"><span style="color:#38bdf8">✈</span><div>$1</div></div>')
+                .replace(/\n/g, '<br>');
+        }
+
+        function appendMessage(role, content, toolCalls = [], model = "") {
+            const list = document.getElementById("messages-list");
+            const row = document.createElement("div");
+            row.className = `message-row ${role}`;
+
+            let toolCallsHtml = "";
+            if (toolCalls && toolCalls.length > 0) {
+                toolCallsHtml = `
+                <div class="tool-trace-container">
+                    ${toolCalls.map(tc => `
+                        <div class="tool-trace-card">
+                            <div class="tool-trace-header">
+                                <span>⚙️ MCP Tool Çağrısı:</span>
+                                <strong>${tc.name}</strong>
+                            </div>
+                            <div class="tool-trace-detail">Parametreler: ${JSON.stringify(tc.args || {})}</div>
+                        </div>
+                    `).join("")}
+                </div>
+                `;
+            }
+
+            row.innerHTML = `
+                <div class="message-sender-tag">
+                    ${role === 'user' ? '👤 Siz' : '✈️ Semalar Asistanı'}
+                    ${model ? `<span style="color: #64748b; font-size: 10px; margin-left: 6px;">(${model})</span>` : ''}
+                </div>
+                <div class="message-bubble">
+                    ${toolCallsHtml}
+                    <div>${role === 'user' ? content : formatMessageText(content)}</div>
+                </div>
+            `;
+
+            list.appendChild(row);
+            const container = document.getElementById("chat-messages-container");
+            container.scrollTop = container.scrollHeight;
+        }
+
+        async function handleSendQuery(query) {
+            const text = (query || document.getElementById("chat-input").value).trim();
+            if (!text || isChatLoading) return;
+
+            document.getElementById("chat-input").value = "";
+            appendMessage("user", text);
+
+            isChatLoading = true;
+            document.getElementById("loading-indicator").style.display = "flex";
+            const container = document.getElementById("chat-messages-container");
+            container.scrollTop = container.scrollHeight;
+
+            try {
+                const res = await fetch(`${API_BASE}/api/chat`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ message: text, project: "live" })
+                });
+
+
+                const data = await res.json();
+                if (data.status === "success") {
+                    appendMessage("assistant", data.answer, data.tool_calls, data.model);
+                } else {
+                    appendMessage("assistant", `⚠️ **Hata:** ${data.answer || data.error || 'İstek işlenemedi.'}`, data.tool_calls, data.model);
+                }
+            } catch (err) {
+                appendMessage("assistant", `❌ **Bağlantı Hatası:** Sunucuya erişilemedi (${err.message}). Lütfen backend'in çalıştığından emin olun.`);
+            } finally {
+                isChatLoading = false;
+                document.getElementById("loading-indicator").style.display = "none";
+                container.scrollTop = container.scrollHeight;
+            }
+        }
+
+        async function loadTrackedFlights() {
+            const container = document.getElementById("tracked-flights-list");
+            try {
+                const res = await fetch(`${API_BASE}/api/tracked?limit=8`);
+                if (!res.ok) throw new Error();
+                const data = await res.json();
+                const flights = data.most_tracked_flights || [];
+
+                if (flights.length === 0) {
+                    container.innerHTML = `<div style="text-align:center; color:#64748b; font-size:13px; padding:20px 0;">Uçuş verisi bulunamadı.</div>`;
+                    return;
+                }
+
+                container.innerHTML = flights.map(f => {
+                    const fCode = f.flight_number || f.callsign || "N/A";
+                    return `
+                    <div class="flight-item" onclick="handleSendQuery('${fCode} nolu uçağın canlı durumunu, irtifasını, hızını ve rotasını getir.')" title="Detaylarını AI Asistanına Sor">
+                        <div class="flight-item-top">
+                            <span class="flight-number">${fCode}</span>
+                            <span class="flight-trackers">👥 ${(f.live_trackers || 0).toLocaleString()}</span>
+                        </div>
+                        <div class="flight-route">
+                            <span class="route-pill">${f.route || "Bilinmiyor"}</span>
+                            ${f.callsign && f.callsign !== fCode ? `<span style="font-size:11px; color:#64748b">(${f.callsign})</span>` : ''}
+                        </div>
+                        <div class="flight-model">✈ ${f.aircraft_type || f.model || "Uçak tipi belirtilmemiş"}</div>
+                    </div>
+                    `;
+                }).join("");
+
+            } catch (err) {
+                container.innerHTML = `<div style="text-align:center; color:#64748b; font-size:13px; padding:20px 0;">Radar verisi yüklenemedi.</div>`;
+            }
+        }
+
+        async function loadStatus() {
+            try {
+                const res = await fetch(`${API_BASE}/api/status`);
+                if (!res.ok) return;
+                const data = await res.json();
+                document.getElementById("ai-model-badge").textContent = `✨ ${data.provider?.toUpperCase() || 'AI'} (${data.model || ''})`;
+            } catch (e) {}
+        }
+
+        document.addEventListener("DOMContentLoaded", () => {
+            loadStatus();
+            loadTrackedFlights();
+
+            // Check URL query parameters (e.g. ?ask=TK10 from Kafka view)
+            const urlParams = new URLSearchParams(window.location.search);
+            const askFlight = urlParams.get("ask");
+            if (askFlight) {
+                handleSendQuery(`${askFlight} nolu uçağın canlı durumunu, irtifasını, hızını ve rotasını getir.`);
+            }
+
+            document.getElementById("btn-send-chat").addEventListener("click", () => handleSendQuery());
+            document.getElementById("chat-input").addEventListener("keydown", (e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSendQuery();
+                }
+            });
+
+            document.querySelectorAll(".prompt-chip").forEach(chip => {
+                chip.addEventListener("click", () => {
+                    handleSendQuery(chip.getAttribute("data-query"));
+                });
+            });
+
+            document.getElementById("btn-clear-chat").addEventListener("click", () => {
+                document.getElementById("messages-list").innerHTML = "";
+            });
+
+            document.getElementById("btn-refresh-tracked").addEventListener("click", loadTrackedFlights);
+
+            document.getElementById("btn-toggle-sidebar").addEventListener("click", () => {
+                const sidebar = document.getElementById("radar-sidebar");
+                isSidebarOpen = !isSidebarOpen;
+                sidebar.style.display = isSidebarOpen ? "flex" : "none";
+                document.getElementById("btn-toggle-sidebar").textContent = isSidebarOpen ? "📡 Paneli Gizle" : "📡 Radar Paneli";
+            });
+
+            document.getElementById("airport-form").addEventListener("submit", (e) => {
+                e.preventDefault();
+                const code = document.getElementById("airport-input").value.trim().toUpperCase();
+                if (code) {
+                    document.getElementById("airport-input").value = "";
+                    handleSendQuery(`${code} kodlu havalimanının şehir, ülke ve koordinat detaylarını ver.`);
+                }
+            });
+        });
+    </script>
 </body>
 </html>

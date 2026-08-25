@@ -34,41 +34,67 @@ def calculate_haversine_distance(lat1: float, lon1: float, lat2: float, lon2: fl
     return round(R * c, 2)
 
 
+class _FlightWrapper:
+    """Wrapper object with an .id property for FlightRadar24API.get_flight_details compatibility."""
+    def __init__(self, flight_id: str):
+        self.id = flight_id
+
+
 def get_flight_info(query: str) -> Dict[str, Any]:
     """Finds a live flight by flight number, callsign, or aircraft registration.
     Uses multi-tiered lookup via FlightRadar24 live database.
     """
-    clean_query = query.strip().upper()
-    try:
-        search_results = fr_api.search(clean_query)
-    except Exception as e:
-        search_results = {}
+    raw_query = query.strip()
+    clean_query = raw_query.upper()
+    no_space_query = clean_query.replace(" ", "").replace("-", "")
+
+    search_candidates = [clean_query, no_space_query]
+    if no_space_query.startswith("TK") and len(no_space_query) > 2:
+        search_candidates.append("THY" + no_space_query[2:])
+    elif no_space_query.startswith("THY") and len(no_space_query) > 3:
+        search_candidates.append("TK" + no_space_query[3:])
+    elif no_space_query.startswith("PC") and len(no_space_query) > 2:
+        search_candidates.append("PGT" + no_space_query[2:])
+    elif no_space_query.startswith("PGT") and len(no_space_query) > 3:
+        search_candidates.append("PC" + no_space_query[3:])
 
     target_flight_id = None
-    live_results = search_results.get("live", []) if isinstance(search_results, dict) else []
-    
-    for item in live_results:
-        flight_id = item.get("id")
-        detail = item.get("detail", {})
-        callsign = detail.get("callsign", "").upper()
-        flight_num = detail.get("flight", "").upper()
-        reg = detail.get("reg", "").upper()
+    target_flight_obj = None
 
-        if clean_query in [callsign, flight_num, reg] or clean_query in flight_num or clean_query in callsign:
-            target_flight_id = flight_id
-            break
+    # Tier 1: Search API
+    for cand in search_candidates:
+        try:
+            search_results = fr_api.search(cand)
+            live_results = search_results.get("live", []) if isinstance(search_results, dict) else []
+            for item in live_results:
+                f_id = item.get("id")
+                detail = item.get("detail", {})
+                callsign = detail.get("callsign", "").upper()
+                flight_num = detail.get("flight", "").upper()
+                reg = detail.get("reg", "").upper()
 
-    if not target_flight_id and live_results:
-        target_flight_id = live_results[0].get("id")
+                if any(c in [callsign, flight_num, reg] or c in flight_num or c in callsign for c in search_candidates):
+                    target_flight_id = f_id
+                    break
+            if not target_flight_id and live_results:
+                target_flight_id = live_results[0].get("id")
+            if target_flight_id:
+                break
+        except Exception:
+            pass
 
+    # Tier 2: Global get_flights() scan
     if not target_flight_id:
         try:
             flights = fr_api.get_flights()
             for f in flights:
-                if (f.callsign and f.callsign.upper() == clean_query) or \
-                   (f.number and f.number.upper() == clean_query) or \
-                   (f.registration and f.registration.upper() == clean_query):
+                f_call = (f.callsign or "").upper()
+                f_num = (f.number or "").upper()
+                f_reg = (f.registration or "").upper()
+                if any(c in [f_call, f_num, f_reg] for c in search_candidates) or \
+                   any(c in f_call or c in f_num for c in search_candidates if len(c) >= 3):
                     target_flight_id = f.id
+                    target_flight_obj = f
                     break
         except Exception:
             pass
@@ -79,12 +105,14 @@ def get_flight_info(query: str) -> Dict[str, Any]:
             "message": f"Uçuş '{query}' için şu an havadaki canlı uçuşlar arasında aktif telemetri kaydı bulunamadı. Uçak henüz kalkmamış, inmiş veya radar kapsama alanı dışında olabilir."
         }
 
+    # Tier 3: Fetch Comprehensive Details
+    details = {}
     try:
-        details = fr_api.get_flight_details(target_flight_id)
-    except Exception as e:
-        details = {}
+        details = fr_api.get_flight_details(_FlightWrapper(target_flight_id))
+    except Exception:
+        pass
 
-    trail = details.get("trail", [])
+    trail = details.get("trail", []) if isinstance(details, dict) else []
     current_point = trail[0] if trail else {}
 
     latitude = current_point.get("lat")
@@ -94,61 +122,79 @@ def get_flight_info(query: str) -> Dict[str, Any]:
     heading = current_point.get("hd")
 
     if latitude is None:
-        try:
-            flights = fr_api.get_flights()
-            for f in flights:
-                if f.id == target_flight_id:
-                    latitude = f.latitude
-                    longitude = f.longitude
-                    altitude_ft = f.altitude
-                    speed_kts = f.ground_speed
-                    heading = f.heading
-                    break
-        except Exception:
-            pass
+        if target_flight_obj:
+            latitude = target_flight_obj.latitude
+            longitude = target_flight_obj.longitude
+            altitude_ft = target_flight_obj.altitude
+            speed_kts = target_flight_obj.ground_speed
+            heading = target_flight_obj.heading
+        else:
+            try:
+                flights = fr_api.get_flights()
+                for f in flights:
+                    if f.id == target_flight_id:
+                        latitude = f.latitude
+                        longitude = f.longitude
+                        altitude_ft = f.altitude
+                        speed_kts = f.ground_speed
+                        heading = f.heading
+                        break
+            except Exception:
+                pass
 
     # Extract Flight & Airline Metadata
-    identification = details.get("identification", {})
+    identification = details.get("identification", {}) if isinstance(details, dict) else {}
     flight_number = identification.get("number", {}).get("default")
     callsign = identification.get("callsign")
 
-    aircraft = details.get("aircraft", {})
+    aircraft = details.get("aircraft", {}) if isinstance(details, dict) else {}
     aircraft_model = aircraft.get("model", {}).get("text") or aircraft.get("model", {}).get("code")
     registration = aircraft.get("registration")
 
-    airline = details.get("airline", {}).get("name")
+    airline = details.get("airline", {}).get("name") if isinstance(details, dict) else None
+    flight_status = details.get("status", {}).get("text") if isinstance(details, dict) else "Havada (Canlı Radar)"
 
-    status = details.get("status", {}).get("text")
+    airport_info = details.get("airport") if isinstance(details, dict) and isinstance(details.get("airport"), dict) else {}
+    origin_airport = airport_info.get("origin") if isinstance(airport_info.get("origin"), dict) else {}
+    dest_airport = airport_info.get("destination") if isinstance(airport_info.get("destination"), dict) else {}
 
-    origin_airport = details.get("airport", {}).get("origin", {})
-    dest_airport = details.get("airport", {}).get("destination", {})
+    orig_pos = origin_airport.get("position") if isinstance(origin_airport.get("position"), dict) else {}
+    orig_region = orig_pos.get("region") if isinstance(orig_pos.get("region"), dict) else {}
+    orig_country = orig_pos.get("country") if isinstance(orig_pos.get("country"), dict) else {}
+    orig_code = origin_airport.get("code") if isinstance(origin_airport.get("code"), dict) else {}
+
+    dest_pos = dest_airport.get("position") if isinstance(dest_airport.get("position"), dict) else {}
+    dest_region = dest_pos.get("region") if isinstance(dest_pos.get("region"), dict) else {}
+    dest_country = dest_pos.get("country") if isinstance(dest_pos.get("country"), dict) else {}
+    dest_code = dest_airport.get("code") if isinstance(dest_airport.get("code"), dict) else {}
 
     origin = {
         "name": origin_airport.get("name"),
-        "city": origin_airport.get("position", {}).get("region", {}).get("city"),
-        "country": origin_airport.get("position", {}).get("country", {}).get("name"),
-        "code_iata": origin_airport.get("code", {}).get("iata"),
-        "code_icao": origin_airport.get("code", {}).get("icao")
+        "city": orig_region.get("city"),
+        "country": orig_country.get("name"),
+        "code_iata": orig_code.get("iata"),
+        "code_icao": orig_code.get("icao")
     }
 
     destination = {
         "name": dest_airport.get("name"),
-        "city": dest_airport.get("position", {}).get("region", {}).get("city"),
-        "country": dest_airport.get("position", {}).get("country", {}).get("name"),
-        "code_iata": dest_airport.get("code", {}).get("iata"),
-        "code_icao": dest_airport.get("code", {}).get("icao")
+        "city": dest_region.get("city"),
+        "country": dest_country.get("name"),
+        "code_iata": dest_code.get("iata"),
+        "code_icao": dest_code.get("icao")
     }
 
+
     return {
-        "status": "active",
-        "flight_number": flight_number or query,
-        "callsign": callsign,
-        "airline": airline,
+        "status": "success",
+        "flight_number": flight_number or no_space_query,
+        "callsign": callsign or (target_flight_obj.callsign if target_flight_obj else None),
+        "airline": airline or (target_flight_obj.airline_icao if target_flight_obj else None),
         "aircraft": {
-            "model": aircraft_model or "Belirtilmemiş",
-            "registration": registration
+            "model": aircraft_model or (target_flight_obj.aircraft_code if target_flight_obj else "Belirtilmemiş"),
+            "registration": registration or (target_flight_obj.registration if target_flight_obj else None)
         },
-        "flight_status": status,
+        "flight_status": flight_status,
         "telemetry": {
             "latitude": latitude,
             "longitude": longitude,
@@ -163,6 +209,7 @@ def get_flight_info(query: str) -> Dict[str, Any]:
             "destination": destination
         }
     }
+
 
 
 def search_airline_flights(airline_code: str, limit: int = 15) -> Dict[str, Any]:
