@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Semalar — 2. Proje: Apache Kafka 1200 Telemetri & AI Chat Asistanı</title>
+    <meta name="description" content="Apache Kafka 1200 uçaklık telemetri havuzu, yapay zeka sohbeti, hız filtreleri ve MCP canlı istek günlüğü.">
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Cockpit Radar Design System -->
+    <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+      .btn-switch-project {
+        background: rgba(239, 68, 68, 0.15);
+        color: #fca5a5;
+        border: 1.5px solid rgba(239, 68, 68, 0.4);
+        padding: 7px 16px;
+        border-radius: 9999px;
+        font-size: 12.5px;
+        font-weight: 700;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        transition: all 0.2s ease;
+      }
+      .btn-switch-project:hover {
+        background: rgba(239, 68, 68, 0.3);
+        transform: translateY(-1px);
+        box-shadow: 0 0 15px rgba(239, 68, 68, 0.3);
+      }
+      .btn-kafka-ui {
+        background: rgba(245, 158, 11, 0.15);
+        color: #fbbf24;
+        border: 1px solid rgba(245, 158, 11, 0.4);
+        padding: 6px 14px;
+        border-radius: var(--radius-sm);
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        transition: all 0.2s ease;
+      }
+      .btn-kafka-ui:hover {
+        background: rgba(245, 158, 11, 0.3);
+        transform: translateY(-1px);
+      }
+      .project-badge-tag {
+        font-size: 11px;
+        background: rgba(0, 240, 255, 0.15);
+        color: #38bdf8;
+        border: 1px solid rgba(0, 240, 255, 0.3);
+        padding: 3px 10px;
+        border-radius: 6px;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+      }
+      .kafka-sidebar {
+        width: 440px;
+        display: flex;
+        flex-direction: column;
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-hud);
+        overflow: hidden;
+      }
+    </style>
+</head>
+<body>
+    <div style="display: flex; flex-direction: column; height: 100vh;">
+        <!-- HEADER -->
+        <header class="app-header">
+            <div class="brand-section">
+                <div class="brand-icon">⚡</div>
+                <div>
+                    <div class="brand-title">
+                        SEMALAR
+                        <span class="project-badge-tag">2. PROJE: KAFKA 1200 & AI CHAT</span>
+                    </div>
+                    <div class="brand-subtitle">Apache Kafka In-Memory Stream, MCP Tools & AI Aviation Assistant</div>
+                </div>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <a href="/" class="btn-switch-project" title="1. Projeye Geç (Canlı FlightRadar24 & AI Chat)">
+                    <span>🔴</span>
+                    <span>1. Proje Canlı Radara Git</span>
+                </a>
+                <a href="http://localhost:8080" target="_blank" class="btn-kafka-ui" title="Docker Kafka UI Paneline Git">
+                    <span>📊</span>
+                    <span>Kafka UI (8080)</span>
+                </a>
+            </div>
+
+            <div class="header-status-group">
+                <div class="status-badge live">
+                    <div class="pulse-dot"></div>
+                    KAFKA: 9092 ONLINE
+                </div>
+
+                <div class="status-badge provider" id="ai-model-badge">
+                    ✨ AI ASİSTANI (HAZIR)
+                </div>
+
+                <button class="btn-icon" id="btn-clear-chat" title="Sohbeti Temizle">🗑️ Temizle</button>
+                <button class="btn-icon" id="btn-toggle-sidebar" title="Kafka Panelini Aç/Kapat">📡 Paneli Gizle</button>
+            </div>
+        </header>
+
+        <!-- MAIN COCKPIT CONTAINER -->
+        <main class="app-container">
+            <!-- LEFT/CENTER: AI CHAT WITH KAFKA TOOLS -->
+            <section class="chat-column">
+                <div class="chat-messages" id="chat-messages-container">
+                    <div class="welcome-hero">
+                        <h2>⚡ 2. Proje: Apache Kafka 1200 Telemetri & AI Asistanı</h2>
+                        <p>
+                            Bu modda yapay zeka sorularınızı <strong>Kafka 'live-flights' telemetri havuzundaki 1200 uçak</strong> ve 
+                            özel Kafka MCP araçlarını (hız filtreleri, bölgesel arama, istatistikler) kullanarak yanıtlar.
+                        </p>
+                        
+                        <div class="prompt-chips-container">
+                            <button class="prompt-chip" data-query="Kafka akışında 900 km/s hızın üzerindeki en hızlı uçakları ve modellerini listele">🚀 900 km/s Üzeri Hızlı Uçaklar</button>
+                            <button class="prompt-chip" data-query="THY10 nolu uçak Kafka akışında var mı, irtifası ve hızı nedir?">📍 THY10 nerede?</button>
+                            <button class="prompt-chip" data-query="İstanbul (41.0082, 28.9784) semalarında 150 km yarıçapında uçan uçakları göster">🇹🇷 İstanbul Semaları (Kafka)</button>
+                            <button class="prompt-chip" data-query="Kafka telemetri deposundaki ortalama hız, en yüksek irtifa ve toplam uçak istatistikleri nelerdir?">📊 Kafka Akış İstatistikleri</button>
+                            <button class="prompt-chip" data-query="Pegasus'un (PGT) Kafka havuzundaki havadaki uçaklarını listele">✈️ Pegasus Uçakları</button>
+                        </div>
+                    </div>
+
+                    <div id="messages-list"></div>
+                    
+                    <div id="loading-indicator" class="message-row assistant" style="display: none;">
+                        <div class="message-sender-tag">⚡ Semalar Kafka Asistanı</div>
+                        <div class="typing-radar">
+                            <div class="radar-spinner"></div>
+                            <span>Apache Kafka 1200 telemetri akışı taranıyor...</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CHAT INPUT -->
+                <div class="chat-input-container">
+                    <div class="chat-input-wrapper">
+                        <input type="text" id="chat-input" class="chat-input" placeholder="Uçuş kodu (örn: TK10), hız sorgusu (örn: 900 km/s üstü) veya konum sorun..." autofocus>
+                    </div>
+                    <button id="btn-send-chat" class="btn-send">
+                        <span>Gönder</span>
+                        <span>🚀</span>
+                    </button>
+                </div>
+            </section>
+
+            <!-- RIGHT: KAFKA TELEMETRY SIDEBAR (KPIS, SPEED FILTERS & LOGS) -->
+            <aside class="kafka-sidebar" id="kafka-sidebar">
+                <!-- SIDEBAR HEADER WITH SUB-TABS -->
+                <div class="sidebar-header" style="flex-direction: column; gap: 10px; align-items: stretch;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div class="nav-tabs-group" style="padding: 2px;">
+                            <button class="nav-tab-btn active" id="tab-btn-flights" style="padding: 4px 10px; font-size: 11.5px;">
+                                <span>🛫</span>
+                                <span>Uçuş Havuzu (1200)</span>
+                            </button>
+                            <button class="nav-tab-btn" id="tab-btn-logs" style="padding: 4px 10px; font-size: 11.5px;">
+                                <span>📋</span>
+                                <span id="tab-logs-badge">MCP Logları</span>
+                            </button>
+                        </div>
+
+                        <div style="display: flex; gap: 6px;">
+                            <button class="btn-icon" id="btn-sync-kafka" style="padding: 4px 8px; font-size: 11px;" title="Kafka'dan Belleğe Yeniden Çek">🔄 Senkronize</button>
+                            <button class="btn-icon" id="btn-produce-fresh" style="padding: 4px 8px; font-size: 11px; background: rgba(16, 185, 129, 0.15); color: #34d399; border-color: rgba(16, 185, 129, 0.3);" title="FlightRadar'dan 1200 Taze Veri Çek ve Kafka'ya Bas">
+                                🚀 Taze Veri Bas
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 4 MINI KPI CARDS -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 12px; background: var(--bg-card-subtle); border-bottom: 1px solid var(--border-color);">
+                    <div style="background: rgba(7, 10, 18, 0.6); padding: 8px 10px; border-radius: 6px; border: 1px solid rgba(0, 240, 255, 0.15);">
+                        <span style="font-size: 10px; color: #94a3b8; text-transform: uppercase; display: block;">Uçuş Havuzu</span>
+                        <span style="font-size: 15px; font-weight: 800; color: #00f0ff; font-family: var(--font-mono);" id="kpi-total-flights">1.200</span>
+                    </div>
+                    <div style="background: rgba(7, 10, 18, 0.6); padding: 8px 10px; border-radius: 6px; border: 1px solid rgba(56, 189, 248, 0.15);">
+                        <span style="font-size: 10px; color: #94a3b8; text-transform: uppercase; display: block;">Havayolu</span>
+                        <span style="font-size: 15px; font-weight: 800; color: #38bdf8; font-family: var(--font-mono);" id="kpi-total-airlines">159</span>
+                    </div>
+                    <div style="background: rgba(7, 10, 18, 0.6); padding: 8px 10px; border-radius: 6px; border: 1px solid rgba(245, 158, 11, 0.15);">
+                        <span style="font-size: 10px; color: #94a3b8; text-transform: uppercase; display: block;">Maks Hız</span>
+                        <span style="font-size: 15px; font-weight: 800; color: #fbbf24; font-family: var(--font-mono);" id="kpi-max-speed">0 km/s</span>
+                    </div>
+                    <div style="background: rgba(7, 10, 18, 0.6); padding: 8px 10px; border-radius: 6px; border: 1px solid rgba(16, 185, 129, 0.15);">
+                        <span style="font-size: 10px; color: #94a3b8; text-transform: uppercase; display: block;">Maks İrtifa</span>
+                        <span style="font-size: 15px; font-weight: 800; color: #34d399; font-family: var(--font-mono);" id="kpi-max-alt">0 ft</span>
+                    </div>
+                </div>
+
+                <!-- SIDEBAR CONTENT -->
+                <div class="sidebar-content" style="padding: 12px; gap: 12px;">
+                    <!-- FLIGHTS LIST VIEW -->
+                    <div id="sidebar-flights-view" style="display: flex; flex-direction: column; gap: 10px; height: 100%;">
+                        <!-- SPEED PILLS -->
+                        <div class="speed-pills-group" id="speed-filters-container">
+                            <button class="speed-pill-btn active" data-speed="" style="font-size: 11px; padding: 4px 8px;">Tümü</button>
+                            <button class="speed-pill-btn" data-speed="600" style="font-size: 11px; padding: 4px 8px;">&gt;600</button>
+                            <button class="speed-pill-btn" data-speed="800" style="font-size: 11px; padding: 4px 8px;">&gt;800</button>
+                            <button class="speed-pill-btn" data-speed="900" style="font-size: 11px; padding: 4px 8px;">🚀 &gt;900</button>
+                            <button class="speed-pill-btn" data-speed="1000" style="font-size: 11px; padding: 4px 8px;">🔥 &gt;1000</button>
+                        </div>
+
+                        <!-- SEARCH INPUT -->
+                        <form id="search-form" class="search-input-group" style="max-width: 100%;">
+                            <input type="text" id="search-input" placeholder="Uçuş kodu, model ara (örn: TK, B77L)..." style="font-size: 12px; padding: 6px 10px;">
+                            <button type="submit" class="btn-icon" style="padding: 5px 10px;">🔍</button>
+                        </form>
+
+                        <div style="display: flex; justify-content: space-between; font-size: 11.5px; color: #94a3b8;">
+                            <span>Eşleşen: <strong style="color: #38bdf8;" id="flights-count-display">0</strong> uçak</span>
+                            <span style="color: #64748b;">(Tıklayarak AI'ya Sorun)</span>
+                        </div>
+
+                        <!-- FLIGHTS SCROLLABLE CONTAINER -->
+                        <div id="kafka-flights-list" style="display: flex; flex-direction: column; gap: 8px; overflow-y: auto; flex: 1; max-height: calc(100vh - 350px);">
+                            <div style="text-align: center; color: #64748b; font-size: 12px; padding: 20px 0;">
+                                Kafka uçuş verileri yükleniyor...
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- AUDIT LOGS VIEW -->
+                    <div id="sidebar-logs-view" style="display: none; flex-direction: column; gap: 8px; height: 100%;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-size: 12px; color: #38bdf8; font-weight: 600;">📋 Canlı MCP İstek Günlüğü</span>
+                            <button class="btn-icon" id="btn-refresh-logs" style="font-size: 11px; padding: 2px 6px;">🔄</button>
+                        </div>
+                        <div style="overflow-y: auto; flex: 1; max-height: calc(100vh - 280px);">
+                            <table class="audit-table" style="font-size: 11px;">
+                                <thead>
+                                    <tr>
+                                        <th>Zaman</th>
+                                        <th>MCP Aracı</th>
+                                        <th>Kayıt</th>
+                                        <th>Süre</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="audit-table-body">
+                                    <tr>
+                                        <td colspan="4" style="text-align: center; padding: 20px; color: #64748b;">
+                                            Henüz MCP isteği kaydedilmedi.
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div style="margin-top: auto; background: rgba(0, 240, 255, 0.03); border: 1px solid rgba(56, 189, 248, 0.15); border-radius: 8px; padding: 10px; font-size: 11px; color: #94a3b8;">
+                        <strong style="color: #38bdf8; display: block; margin-bottom: 2px;">⚡ Kafka 1200 Telemetri Havuzu:</strong>
+                        Uçuş aramaları ve hız filtreleri Kafka topic 'live-flights' üzerinden anında çekilir.
+                    </div>
+                </div>
+            </aside>
+        </main>
+    </div>
+
+    <!-- PURE NATIVE JAVASCRIPT LOGIC FOR PROJECT 2 -->
+    <script>
+        const API_BASE = window.location.origin;
+        let isChatLoading = false;
+        let isSidebarOpen = true;
+        let currentMinSpeed = "";
+        let currentSearchQuery = "";
+        let isProducing = false;
+
+        function formatMessageText(text) {
+            if (!text) return "";
+            return text
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/^• (.*$)/gim, '<div style="display:flex; gap:8px; margin:4px 0; padding-left:6px;"><span style="color:#38bdf8">✈</span><div>$1</div></div>')
+                .replace(/^- (.*$)/gim, '<div style="display:flex; gap:8px; margin:4px 0; padding-left:6px;"><span style="color:#38bdf8">✈</span><div>$1</div></div>')
+                .replace(/\n/g, '<br>');
+        }
+
+        function appendMessage(role, content, toolCalls = [], model = "") {
+            const list = document.getElementById("messages-list");
+            const row = document.createElement("div");
+            row.className = `message-row ${role}`;
+
+            let toolCallsHtml = "";
+            if (toolCalls && toolCalls.length > 0) {
+                toolCallsHtml = `
+                <div class="tool-trace-container">
+                    ${toolCalls.map(tc => `
+                        <div class="tool-trace-card">
+                            <div class="tool-trace-header">
+                                <span>⚙️ Kafka MCP Tool:</span>
+                                <strong>${tc.name}</strong>
+                            </div>
+                            <div class="tool-trace-detail">Parametreler: ${JSON.stringify(tc.args || {})}</div>
+                        </div>
+                    `).join("")}
+                </div>
+                `;
+            }
+
+            row.innerHTML = `
+                <div class="message-sender-tag">
+                    ${role === 'user' ? '👤 Siz' : '⚡ Semalar Kafka Asistanı'}
+                    ${model ? `<span style="color: #64748b; font-size: 10px; margin-left: 6px;">(${model})</span>` : ''}
+                </div>
+                <div class="message-bubble">
+                    ${toolCallsHtml}
+                    <div>${role === 'user' ? content : formatMessageText(content)}</div>
+                </div>
+            `;
+
+            list.appendChild(row);
+            const container = document.getElementById("chat-messages-container");
+            container.scrollTop = container.scrollHeight;
+        }
+
+        async function handleSendQuery(query) {
+            const text = (query || document.getElementById("chat-input").value).trim();
+            if (!text || isChatLoading) return;
+
+            document.getElementById("chat-input").value = "";
+            appendMessage("user", text);
+
+            isChatLoading = true;
+            document.getElementById("loading-indicator").style.display = "flex";
+            const container = document.getElementById("chat-messages-container");
+            container.scrollTop = container.scrollHeight;
+
+            try {
+                const res = await fetch(`${API_BASE}/api/chat`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ message: text, project: "kafka" })
+                });
+
+
+                const data = await res.json();
+                if (data.status === "success") {
+                    appendMessage("assistant", data.answer, data.tool_calls, data.model);
+                } else {
+                    appendMessage("assistant", `⚠️ **Hata:** ${data.answer || data.error || 'İstek işlenemedi.'}`, data.tool_calls, data.model);
+                }
+                loadLogs(); // Refresh logs after query
+            } catch (err) {
+                appendMessage("assistant", `❌ **Bağlantı Hatası:** Sunucuya erişilemedi (${err.message}). Lütfen backend'in çalıştığından emin olun.`);
+            } finally {
+                isChatLoading = false;
+                document.getElementById("loading-indicator").style.display = "none";
+                container.scrollTop = container.scrollHeight;
+            }
+        }
+
+        async function loadStats() {
+            try {
+                const res = await fetch(`${API_BASE}/api/kafka/stats`);
+                if (!res.ok) return;
+                const data = await res.json();
+                
+                document.getElementById("kpi-total-flights").textContent = (data.total_flights_in_kafka || 1200).toLocaleString();
+                document.getElementById("kpi-total-airlines").textContent = (data.total_unique_airlines || 159).toLocaleString();
+                document.getElementById("kpi-max-speed").textContent = `${data.speed_kmh?.max || 0} km/s`;
+                document.getElementById("kpi-max-alt").textContent = `${data.altitude_feet?.max ? data.altitude_feet.max.toLocaleString() : 0} ft`;
+            } catch (err) {
+                console.warn("Stats error:", err);
+            }
+        }
+
+        async function loadFlights() {
+            const container = document.getElementById("kafka-flights-list");
+            const countDisplay = document.getElementById("flights-count-display");
+            
+            try {
+                const params = new URLSearchParams({ limit: 60 });
+                if (currentMinSpeed) params.set("min_speed", currentMinSpeed);
+                if (currentSearchQuery) params.set("query", currentSearchQuery);
+
+                const res = await fetch(`${API_BASE}/api/kafka/flights?${params.toString()}`);
+                if (!res.ok) throw new Error("Uçuş verisi alınamadı");
+                const data = await res.json();
+                const flights = data.flights || [];
+
+                countDisplay.textContent = flights.length;
+
+                if (flights.length === 0) {
+                    container.innerHTML = `<div style="text-align: center; padding: 20px; color: #64748b; font-size: 12px;">Eşleşen uçuş bulunamadı.</div>`;
+                    return;
+                }
+
+                container.innerHTML = flights.map(f => {
+                    const fCode = f.flight_number || f.callsign || "N/A";
+                    const spdKmh = f.telemetry?.ground_speed_kmh || 0;
+                    const isSupersonic = spdKmh >= 900;
+                    const altFeet = f.telemetry?.altitude_feet ? f.telemetry.altitude_feet.toLocaleString() : 0;
+
+                    return `
+                    <div class="flight-item" onclick="handleSendQuery('${fCode} nolu uçağın Kafka akışındaki canlı durumunu, irtifasını, hızını ve rotasını getir.')" title="Detaylarını AI Asistanına Sor">
+                        <div class="flight-item-top">
+                            <span class="flight-number">${fCode}</span>
+                            <span class="telemetry-speed-badge ${isSupersonic ? 'supersonic' : ''}" style="font-size: 11px; padding: 2px 6px;">⚡ ${spdKmh} km/s</span>
+                        </div>
+                        <div class="flight-route">
+                            <span class="route-pill">${f.route?.display || '? ➔ ?'}</span>
+                            <span style="font-size: 11px; color: #94a3b8;">${altFeet} ft</span>
+                        </div>
+                        <div class="flight-model">✈ ${f.aircraft_model || 'Bilinmiyor'}</div>
+                    </div>
+                    `;
+                }).join("");
+
+            } catch (err) {
+                container.innerHTML = `<div style="text-align: center; padding: 20px; color: #ef4444; font-size: 12px;">Hata: ${err.message}</div>`;
+            }
+        }
+
+        async function loadLogs() {
+            const tableBody = document.getElementById("audit-table-body");
+            const logsBadge = document.getElementById("tab-logs-badge");
+
+            try {
+                const res = await fetch(`${API_BASE}/api/kafka/logs`);
+                if (!res.ok) return;
+                const data = await res.json();
+                const logs = data.logs || [];
+
+                if (logsBadge) {
+                    logsBadge.textContent = `MCP Logları (${logs.length})`;
+                }
+
+                if (!tableBody) return;
+
+                if (logs.length === 0) {
+                    tableBody.innerHTML = `<tr><td colspan="4" style="text-align: center; padding: 20px; color: #64748b;">Henüz kaydedilmiş MCP isteği yok.</td></tr>`;
+                    return;
+                }
+
+                tableBody.innerHTML = logs.map(log => {
+                    const timeStr = log.timestamp ? log.timestamp.split("T")[1].substring(0, 8) : "--:--:--";
+                    const matchedStr = (log.matched_records !== null && log.matched_records !== undefined) ? `${log.matched_records} uçuş` : "-";
+                    const argsSummary = log.arguments ? JSON.stringify(log.arguments) : "";
+
+                    return `
+                    <tr title="${argsSummary.replace(/"/g, '&quot;')}">
+                        <td style="font-family: var(--font-mono); color: #94a3b8;">${timeStr}</td>
+                        <td><span class="audit-tool-badge" style="font-size: 10px; padding: 1px 5px;">${log.tool_name}</span></td>
+                        <td>${matchedStr}</td>
+                        <td style="font-family: var(--font-mono); color: #34d399; font-weight: 600;">⚡ ${log.execution_time_ms}ms</td>
+                    </tr>
+                    `;
+                }).join("");
+
+            } catch (err) {
+                console.warn("Logs error:", err);
+            }
+        }
+
+
+        async function loadStatus() {
+            try {
+                const res = await fetch(`${API_BASE}/api/status`);
+                if (!res.ok) return;
+                const data = await res.json();
+                document.getElementById("ai-model-badge").textContent = `✨ ${data.provider?.toUpperCase() || 'AI'} (${data.model || ''})`;
+            } catch (e) {}
+        }
+
+        document.addEventListener("DOMContentLoaded", () => {
+            loadStatus();
+            loadStats();
+            loadFlights();
+            loadLogs();
+
+            // Refresh logs badge and list periodically in memory
+            setInterval(loadLogs, 8000);
+
+            // Send Chat
+
+            document.getElementById("btn-send-chat").addEventListener("click", () => handleSendQuery());
+            document.getElementById("chat-input").addEventListener("keydown", (e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSendQuery();
+                }
+            });
+
+            // Prompt Chips
+            document.querySelectorAll(".prompt-chip").forEach(chip => {
+                chip.addEventListener("click", () => {
+                    handleSendQuery(chip.getAttribute("data-query"));
+                });
+            });
+
+            // Clear Chat
+            document.getElementById("btn-clear-chat").addEventListener("click", () => {
+                document.getElementById("messages-list").innerHTML = "";
+            });
+
+            // Toggle Sidebar
+            document.getElementById("btn-toggle-sidebar").addEventListener("click", () => {
+                const sidebar = document.getElementById("kafka-sidebar");
+                isSidebarOpen = !isSidebarOpen;
+                sidebar.style.display = isSidebarOpen ? "flex" : "none";
+                document.getElementById("btn-toggle-sidebar").textContent = isSidebarOpen ? "📡 Paneli Gizle" : "📡 Radar Paneli";
+            });
+
+            // Speed Pills Clicks
+            document.querySelectorAll("#speed-filters-container .speed-pill-btn").forEach(btn => {
+                btn.addEventListener("click", () => {
+                    document.querySelectorAll("#speed-filters-container .speed-pill-btn").forEach(b => b.classList.remove("active"));
+                    btn.classList.add("active");
+                    currentMinSpeed = btn.getAttribute("data-speed");
+                    loadFlights();
+                });
+            });
+
+            // Search Form
+            document.getElementById("search-form").addEventListener("submit", (e) => {
+                e.preventDefault();
+                currentSearchQuery = document.getElementById("search-input").value.trim();
+                loadFlights();
+            });
+
+            // Sidebar Tabs Switcher (Flights vs Logs)
+            const tabBtnFlights = document.getElementById("tab-btn-flights");
+            const tabBtnLogs = document.getElementById("tab-btn-logs");
+            const secFlights = document.getElementById("sidebar-flights-view");
+            const secLogs = document.getElementById("sidebar-logs-view");
+
+            tabBtnFlights.addEventListener("click", () => {
+                tabBtnFlights.classList.add("active");
+                tabBtnLogs.classList.remove("active");
+                secFlights.style.display = "flex";
+                secLogs.style.display = "none";
+            });
+
+            tabBtnLogs.addEventListener("click", () => {
+                tabBtnLogs.classList.add("active");
+                tabBtnFlights.classList.remove("active");
+                secFlights.style.display = "none";
+                secLogs.style.display = "flex";
+                loadLogs();
+            });
+
+            // Sync Button
+            document.getElementById("btn-sync-kafka").addEventListener("click", async () => {
+                try {
+                    const res = await fetch(`${API_BASE}/api/kafka/sync`, { method: "POST" });
+                    const data = await res.json();
+                    loadStats();
+                    loadFlights();
+                } catch (e) {}
+            });
+
+            // Produce Fresh Button
+            document.getElementById("btn-produce-fresh").addEventListener("click", async () => {
+                if (isProducing) return;
+                isProducing = true;
+                const btn = document.getElementById("btn-produce-fresh");
+                btn.textContent = "⏳...";
+
+                try {
+                    await fetch(`${API_BASE}/api/kafka/produce`, { method: "POST" });
+                    loadStats();
+                    loadFlights();
+                } catch (e) {
+                } finally {
+                    isProducing = false;
+                    btn.textContent = "🚀 Taze Veri Bas";
+                }
+            });
+
+            document.getElementById("btn-refresh-logs").addEventListener("click", loadLogs);
+        });
+    </script>
+</body>
+</html>

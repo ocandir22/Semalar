@@ -1,10 +1,9 @@
-// Semalar React Web UI — Unified Standalone Application
-
+// Semalar React Web UI — Cockpit Radar & Kafka Live Telemetry Stream
 const { useState, useEffect, useRef } = React;
 const API_BASE = window.location.origin;
 
 // ============================================================
-// API Client Functions
+// 1. API Client Functions
 // ============================================================
 
 async function sendChatMessage(message) {
@@ -13,37 +12,62 @@ async function sendChatMessage(message) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ message })
   });
-
   if (!response.ok) {
     const errData = await response.json().catch(() => ({}));
     throw new Error(errData.error || `HTTP ${response.status}: Sunucu hatası`);
   }
-
   return await response.json();
 }
 
 async function fetchTrackedFlights(limit = 8) {
   const response = await fetch(`${API_BASE}/api/tracked?limit=${limit}`);
-  if (!response.ok) {
-    throw new Error("Canlı uçuş verisi alınamadı");
-  }
+  if (!response.ok) throw new Error("Canlı uçuş verisi alınamadı");
   return await response.json();
 }
 
 async function fetchServerStatus() {
   const response = await fetch(`${API_BASE}/api/status`);
-  if (!response.ok) {
-    throw new Error("Sunucu durum bilgisi alınamadı");
-  }
+  if (!response.ok) throw new Error("Sunucu durum bilgisi alınamadı");
+  return await response.json();
+}
+
+async function fetchKafkaStats() {
+  const response = await fetch(`${API_BASE}/api/kafka/stats`);
+  if (!response.ok) throw new Error("Kafka istatistikleri alınamadı");
+  return await response.json();
+}
+
+async function fetchKafkaFlights(params = {}) {
+  const query = new URLSearchParams(params).toString();
+  const response = await fetch(`${API_BASE}/api/kafka/flights?${query}`);
+  if (!response.ok) throw new Error("Kafka uçuşları alınamadı");
+  return await response.json();
+}
+
+async function fetchKafkaLogs() {
+  const response = await fetch(`${API_BASE}/api/kafka/logs`);
+  if (!response.ok) throw new Error("Kafka logları alınamadı");
+  return await response.json();
+}
+
+async function triggerKafkaSync() {
+  const response = await fetch(`${API_BASE}/api/kafka/sync`, { method: "POST" });
+  if (!response.ok) throw new Error("Kafka senkronize edilemedi");
+  return await response.json();
+}
+
+async function triggerKafkaProduceFresh() {
+  const response = await fetch(`${API_BASE}/api/kafka/produce`, { method: "POST" });
+  if (!response.ok) throw new Error("Yeni veri Kafka'ya gönderilemedi");
   return await response.json();
 }
 
 
 // ============================================================
-// Header Component
+// 2. Header Component (View Switcher Tabs)
 // ============================================================
 
-function Header({ statusInfo, onClearChat, onToggleSidebar, isSidebarOpen }) {
+function Header({ statusInfo, currentView, onViewChange, onClearChat, onToggleSidebar, isSidebarOpen }) {
   const provider = statusInfo?.provider?.toUpperCase() || "AI";
   const model = statusInfo?.model || "Hazır";
 
@@ -55,36 +79,57 @@ function Header({ statusInfo, onClearChat, onToggleSidebar, isSidebarOpen }) {
           <div className="brand-title">
             SEMALAR
             <span style={{ fontSize: "11px", background: "rgba(0, 240, 255, 0.15)", color: "#38bdf8", padding: "2px 8px", borderRadius: "4px", fontWeight: "600" }}>
-              AI RADAR
+              KAFKA & ADS-B
             </span>
           </div>
-          <div className="brand-subtitle">FlightRadar24 Telemetry & MCP Assistant</div>
+          <div className="brand-subtitle">Live FlightRadar24 & Apache Kafka Telemetry</div>
         </div>
+      </div>
+
+      {/* 3 View Tabs */}
+      <div className="nav-tabs-group">
+        <button
+          className={`nav-tab-btn ${currentView === "chat" ? "active" : ""}`}
+          onClick={() => onViewChange("chat")}
+        >
+          <span>💬</span>
+          <span>AI Radar Chat</span>
+        </button>
+
+        <button
+          className={`nav-tab-btn ${currentView === "kafka" ? "active" : ""}`}
+          onClick={() => onViewChange("kafka")}
+        >
+          <span>⚡</span>
+          <span>Kafka Canlı Akış (1200)</span>
+        </button>
+
+        <button
+          className={`nav-tab-btn ${currentView === "logs" ? "active" : ""}`}
+          onClick={() => onViewChange("logs")}
+        >
+          <span>📋</span>
+          <span>MCP İstek Günlüğü</span>
+        </button>
       </div>
 
       <div className="header-status-group">
         <div className="status-badge live">
           <div className="pulse-dot"></div>
-          ADS-B RADAR LIVE
+          KAFKA: 9092 ONLINE
         </div>
 
         <div className="status-badge provider">
           ✨ {provider} ({model})
         </div>
 
-        <button 
-          className="btn-icon" 
-          onClick={onClearChat} 
-          title="Sohbeti Temizle"
-        >
-          🗑️ Temizle
-        </button>
+        {currentView === "chat" && (
+          <button className="btn-icon" onClick={onClearChat} title="Sohbeti Temizle">
+            🗑️ Temizle
+          </button>
+        )}
 
-        <button 
-          className="btn-icon" 
-          onClick={onToggleSidebar} 
-          title="Radar Panelini Aç/Kapat"
-        >
+        <button className="btn-icon" onClick={onToggleSidebar} title="Radar Panelini Aç/Kapat">
           📡 {isSidebarOpen ? "Paneli Gizle" : "Radar Paneli"}
         </button>
       </div>
@@ -94,16 +139,369 @@ function Header({ statusInfo, onClearChat, onToggleSidebar, isSidebarOpen }) {
 
 
 // ============================================================
-// Prompt Chips Component
+// 3. Kafka Telemetry Stream Dashboard (1200 Flights & Speed Filters)
+// ============================================================
+
+function KafkaDashboard({ onAskFlight }) {
+  const [stats, setStats] = useState(null);
+  const [flights, setFlights] = useState([]);
+  const [minSpeed, setMinSpeed] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [airlineFilter, setAirlineFilter] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [isProducing, setIsProducing] = useState(false);
+  const [actionMsg, setActionMsg] = useState("");
+
+  useEffect(() => {
+    loadKafkaData();
+  }, [minSpeed, airlineFilter]);
+
+  const loadKafkaData = async () => {
+    setIsLoading(true);
+    try {
+      const statsData = await fetchKafkaStats();
+      setStats(statsData);
+
+      const params = { limit: 60 };
+      if (minSpeed) params.min_speed = minSpeed;
+      if (airlineFilter) params.airline = airlineFilter;
+      if (searchQuery) params.query = searchQuery;
+
+      const flightsData = await fetchKafkaFlights(params);
+      if (flightsData && flightsData.flights) {
+        setFlights(flightsData.flights);
+      }
+    } catch (err) {
+      console.warn("Kafka verisi alınamadı:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSearchSubmit = (e) => {
+    e.preventDefault();
+    loadKafkaData();
+  };
+
+  const handleSync = async () => {
+    setIsLoading(true);
+    try {
+      const res = await triggerKafkaSync();
+      setActionMsg(`✅ ${res.message}`);
+      loadKafkaData();
+      setTimeout(() => setActionMsg(""), 4000);
+    } catch (err) {
+      setActionMsg(`❌ ${err.message}`);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleProduceFresh = async () => {
+    if (isProducing) return;
+    setIsProducing(true);
+    setActionMsg("📡 FlightRadar24'ten 1200 canlı uçak çekilip Kafka'ya basılıyor...");
+    try {
+      const res = await triggerKafkaProduceFresh();
+      setActionMsg(`✨ Başarılı! ${res.sent_count || 1200} uçak Kafka 'live-flights' topic'ine gönderildi.`);
+      loadKafkaData();
+      setTimeout(() => setActionMsg(""), 5000);
+    } catch (err) {
+      setActionMsg(`❌ Hata: ${err.message}`);
+    } finally {
+      setIsProducing(false);
+    }
+  };
+
+  return (
+    <div className="kafka-dashboard">
+      {/* 4 KPI Cards */}
+      <div className="stats-grid">
+        <div className="stat-card" style={{ "--stat-accent": "#00f0ff" }}>
+          <div className="stat-icon">🛫</div>
+          <div className="stat-content">
+            <span className="stat-label">Kafka Uçuş Havuzu</span>
+            <span className="stat-value">{stats?.total_flights_in_kafka || 1200}</span>
+            <span className="stat-sub">Aktif İndekslenmiş Uçak</span>
+          </div>
+        </div>
+
+        <div className="stat-card" style={{ "--stat-accent": "#38bdf8" }}>
+          <div className="stat-icon">🌐</div>
+          <div className="stat-content">
+            <span className="stat-label">Farklı Havayolu</span>
+            <span className="stat-value">{stats?.total_unique_airlines || 159}</span>
+            <span className="stat-sub">IATA / ICAO Taşıyıcı</span>
+          </div>
+        </div>
+
+        <div className="stat-card" style={{ "--stat-accent": "#f59e0b" }}>
+          <div className="stat-icon">⚡</div>
+          <div className="stat-content">
+            <span className="stat-label">Maksimum Yer Hızı</span>
+            <span className="stat-value">{stats?.speed_kmh?.max || 0} km/s</span>
+            <span className="stat-sub">Ortalama: {stats?.speed_kmh?.average || 0} km/s</span>
+          </div>
+        </div>
+
+        <div className="stat-card" style={{ "--stat-accent": "#10b981" }}>
+          <div className="stat-icon">🏔️</div>
+          <div className="stat-content">
+            <span className="stat-label">Maksimum İrtifa</span>
+            <span className="stat-value">{stats?.altitude_feet?.max ? stats.altitude_feet.max.toLocaleString() : 0} ft</span>
+            <span className="stat-sub">Ortalama: {stats?.altitude_feet?.average ? Math.round(stats.altitude_feet.average).toLocaleString() : 0} ft</span>
+          </div>
+        </div>
+      </div>
+
+      {actionMsg && (
+        <div style={{ background: "rgba(0, 240, 255, 0.1)", border: "1px solid rgba(0, 240, 255, 0.3)", borderRadius: "8px", padding: "10px 16px", fontSize: "13px", color: "#38bdf8" }}>
+          {actionMsg}
+        </div>
+      )}
+
+      {/* Speed & Search Toolbar */}
+      <div className="kafka-toolbar">
+        <div className="speed-pills-group">
+          <span style={{ fontSize: "12px", color: "#94a3b8", fontWeight: "600", marginRight: "4px" }}>
+            ⚡ Hız Filtresi:
+          </span>
+          <button 
+            className={`speed-pill-btn ${minSpeed === "" ? "active" : ""}`}
+            onClick={() => setMinSpeed("")}
+          >
+            Tümü (1200)
+          </button>
+          <button 
+            className={`speed-pill-btn ${minSpeed === "600" ? "active" : ""}`}
+            onClick={() => setMinSpeed("600")}
+          >
+            &gt; 600 km/s
+          </button>
+          <button 
+            className={`speed-pill-btn ${minSpeed === "800" ? "active" : ""}`}
+            onClick={() => setMinSpeed("800")}
+          >
+            &gt; 800 km/s
+          </button>
+          <button 
+            className={`speed-pill-btn ${minSpeed === "900" ? "active" : ""}`}
+            onClick={() => setMinSpeed("900")}
+          >
+            🚀 &gt; 900 km/s
+          </button>
+          <button 
+            className={`speed-pill-btn ${minSpeed === "1000" ? "active" : ""}`}
+            onClick={() => setMinSpeed("1000")}
+          >
+            🔥 &gt; 1000 km/s
+          </button>
+        </div>
+
+        <form onSubmit={handleSearchSubmit} className="search-input-group">
+          <input
+            type="text"
+            placeholder="Uçuş kodu, tescil veya havayolu ara (örn: TK, B77L, JA227J)..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+          <button type="submit" className="btn-icon" style={{ padding: "6px 12px" }}>
+            🔍
+          </button>
+        </form>
+
+        <div style={{ display: "flex", gap: "8px" }}>
+          <button className="btn-icon" onClick={handleSync} disabled={isLoading} title="Kafka'dan Belleğe Yeniden Çek">
+            🔄 Senkronize Et
+          </button>
+          <button 
+            className="btn-icon" 
+            style={{ background: "rgba(16, 185, 129, 0.15)", color: "#34d399", borderColor: "rgba(16, 185, 129, 0.3)" }}
+            onClick={handleProduceFresh} 
+            disabled={isProducing}
+            title="FlightRadar'dan 1200 Taze Veri Çek ve Kafka'ya Bas"
+          >
+            {isProducing ? "🛫 Basılıyor..." : "🚀 1200 Taze Veri Bas"}
+          </button>
+        </div>
+      </div>
+
+      {/* Flight Cards Grid */}
+      <div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+          <span style={{ fontSize: "13px", color: "#94a3b8" }}>
+            Eşleşen Uçuşlar: <strong style={{ color: "#38bdf8" }}>{flights.length}</strong> adet
+          </span>
+          <span style={{ fontSize: "11px", color: "#64748b" }}>
+            Veri Kaynağı: Apache Kafka Topic 'live-flights' (localhost:9092)
+          </span>
+        </div>
+
+        {flights.length > 0 ? (
+          <div className="telemetry-grid">
+            {flights.map((f, idx) => {
+              const fCode = f.flight_number || f.callsign || "N/A";
+              const spdKmh = f.telemetry?.ground_speed_kmh || 0;
+              const isSupersonic = spdKmh >= 900;
+              return (
+                <div key={idx} className="telemetry-card">
+                  <div className="telemetry-card-top">
+                    <span className="telemetry-code">{fCode}</span>
+                    <span className={`telemetry-speed-badge ${isSupersonic ? "supersonic" : ""}`}>
+                      ⚡ {spdKmh} km/s
+                    </span>
+                  </div>
+
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span className="route-pill">{f.route?.display || "? ➔ ?"}</span>
+                    <span style={{ fontSize: "11px", color: "#94a3b8" }}>
+                      ✈ {f.aircraft_model || "Bilinmiyor"}
+                    </span>
+                  </div>
+
+                  <div className="telemetry-metrics">
+                    <div className="telemetry-metric-item">
+                      <span className="telemetry-metric-label">İrtifa</span>
+                      <span className="telemetry-metric-val">
+                        {f.telemetry?.altitude_feet ? f.telemetry.altitude_feet.toLocaleString() : 0} ft
+                      </span>
+                    </div>
+                    <div className="telemetry-metric-item">
+                      <span className="telemetry-metric-label">Konum</span>
+                      <span className="telemetry-metric-val">
+                        {f.telemetry?.latitude?.toFixed(2)}, {f.telemetry?.longitude?.toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "2px" }}>
+                    <span style={{ fontSize: "10.5px", color: "#64748b" }}>
+                      Tescil: {f.registration || "N/A"}
+                    </span>
+                    <button
+                      className="btn-icon"
+                      style={{ fontSize: "11px", padding: "3px 8px" }}
+                      onClick={() => onAskFlight(fCode)}
+                      title="Bu uçağın detaylarını AI Asistanına sor"
+                    >
+                      💬 AI'ya Sor
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div style={{ textAlign: "center", padding: "40px", color: "#64748b", background: "var(--bg-card)", borderRadius: "10px" }}>
+            {isLoading ? "Kafka akışından uçuşlar taranıyor..." : "Arama kriterlerine uygun uçuş bulunamadı."}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+// ============================================================
+// 4. Kafka Audit Logs Stream (topic: mcp-requests)
+// ============================================================
+
+function KafkaLogsView() {
+  const [logs, setLogs] = useState([]);
+
+  useEffect(() => {
+    loadLogs();
+    const interval = setInterval(loadLogs, 4000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const loadLogs = async () => {
+    try {
+      const data = await fetchKafkaLogs();
+      if (data && data.logs) {
+        setLogs(data.logs);
+      }
+    } catch (err) {
+      console.warn("Log verisi alınamadı:", err);
+    }
+  };
+
+  return (
+    <div className="kafka-dashboard">
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div>
+          <h3 style={{ color: "#38bdf8", fontSize: "18px" }}>📋 Canlı MCP İstek Günlüğü (Audit Log Stream)</h3>
+          <p style={{ color: "#94a3b8", fontSize: "12.5px" }}>
+            Yapay zeka veya istemciler tarafından yapılan tüm MCP tool çağrıları anlık olarak Kafka <strong>mcp-requests</strong> topic'ine kaydedilir.
+          </p>
+        </div>
+        <button className="btn-icon" onClick={loadLogs}>
+          🔄 Güncelle
+        </button>
+      </div>
+
+      <div className="audit-logs-container">
+        <table className="audit-table">
+          <thead>
+            <tr>
+              <th>Zaman (UTC)</th>
+              <th>Çağrılan MCP Aracı</th>
+              <th>Parametreler</th>
+              <th>Eşleşen Kayıt</th>
+              <th>İşlem Süresi</th>
+              <th>Durum</th>
+            </tr>
+          </thead>
+          <tbody>
+            {logs && logs.length > 0 ? (
+              logs.map((log, idx) => (
+                <tr key={idx}>
+                  <td style={{ fontFamily: "var(--font-mono)", color: "#94a3b8", fontSize: "11px" }}>
+                    {log.timestamp ? log.timestamp.split("T")[1].substring(0, 8) : "--:--:--"}
+                  </td>
+                  <td>
+                    <span className="audit-tool-badge">⚙️ {log.tool_name}</span>
+                  </td>
+                  <td style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "#bae6fd" }}>
+                    {JSON.stringify(log.arguments)}
+                  </td>
+                  <td>
+                    {log.matched_records !== null ? `${log.matched_records} uçuş` : "-"}
+                  </td>
+                  <td style={{ fontFamily: "var(--font-mono)", color: "#34d399", fontWeight: "600" }}>
+                    ⚡ {log.execution_time_ms} ms
+                  </td>
+                  <td>
+                    <span style={{ color: "#10b981", fontSize: "11px", fontWeight: "600" }}>✓ Başarılı</span>
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={6} style={{ textAlign: "center", padding: "30px", color: "#64748b" }}>
+                  Henüz kaydedilmiş MCP isteği bulunmuyor. Chat veya CLI üzerinden soru sorduğunuzda burada görünecektir.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+
+// ============================================================
+// 5. Prompt Chips
 // ============================================================
 
 function PromptChips({ onSelectPrompt }) {
   const samplePrompts = [
+    { label: "⚡ 900 km/s üzeri hızlı uçaklar", query: "Kafka akışında 900 km/s hızın üzerindeki en hızlı uçakları ve modellerini listele" },
+    { label: "📊 Kafka Akış İstatistikleri", query: "Kafka telemetri deposundaki ortalama hız, en yüksek irtifa ve toplam uçak istatistikleri nelerdir?" },
     { label: "📍 THY10 nerede?", query: "THY10 nolu uçak şu an nerede, irtifası kaç ve uçağın modeli ne?" },
-    { label: "🔥 En çok takip edilenler", query: "Dünyada şu an FlightRadar24'te en çok takip edilen ilk 3 uçuş hangisi?" },
-    { label: "🇹🇷 İstanbul Semaları", query: "İstanbul (41.0082, 28.9784) semalarında 80 km yarıçapında uçan uçakları göster" },
-    { label: "✈️ Pegasus Uçuşları", query: "Pegasus'un (PGT) şu an havadaki uçaklarını listele" },
-    { label: "🏢 IST & SAW Havalimanı", query: "İstanbul Havalimanı (IST) ve Sabiha Gökçen (SAW) hakkında bilgi ve koordinat ver" }
+    { label: "🇹🇷 İstanbul Semaları", query: "İstanbul (41.0082, 28.9784) semalarında 150 km yarıçapında uçan uçakları göster" },
+    { label: "🔥 En çok takip edilenler", query: "Dünyada şu an FlightRadar24'te en çok takip edilen ilk 3 uçuş hangisi?" }
   ];
 
   return (
@@ -123,12 +521,11 @@ function PromptChips({ onSelectPrompt }) {
 
 
 // ============================================================
-// Chat Area Component
+// 6. Chat Area & Message Formatter
 // ============================================================
 
 function formatAssistantMessage(text) {
   if (!text) return null;
-
   const lines = text.split("\n");
   const elements = [];
 
@@ -186,11 +583,11 @@ function ChatArea({ messages, isLoading, onSelectPrompt, messagesEndRef }) {
   return (
     <div className="chat-messages">
       <div className="welcome-hero">
-        <h2>✈️ Semalar Canlı Havacılık & Uçuş Takip Asistanı</h2>
+        <h2>✈️ Semalar Canlı Havacılık & Kafka Uçuş Radarı</h2>
         <p>
-          FlightRadar24 küresel ADS-B canlı veri ağı, Model Context Protocol (MCP) ve yapay zeka ile 
-          uçuş numarası (örn. <strong>TK10</strong>), kuyruk tescili (örn. <strong>TC-LJA</strong>), bölgesel radar taraması 
-          veya havalimanı telemetrisini anlık sorgulayın.
+          FlightRadar24 ADS-B canlı veri ağı, Apache Kafka telemetri havuzu ve yapay zeka ile 
+          uçuş numarası (örn. <strong>TK10</strong>), belirli bir hızın üzerindeki uçaklar (örn. <strong>&gt;900 km/s</strong>), 
+          kuyruk tescili veya havalimanı telemetrisini anlık sorgulayın.
         </p>
         <PromptChips onSelectPrompt={onSelectPrompt} />
       </div>
@@ -244,7 +641,7 @@ function ChatArea({ messages, isLoading, onSelectPrompt, messagesEndRef }) {
           <div className="message-sender-tag">✈️ Semalar Asistanı</div>
           <div className="typing-radar">
             <div className="radar-spinner"></div>
-            <span>Canlı FlightRadar24 ADS-B telemetrisi taranıyor...</span>
+            <span>Canlı FlightRadar24 ve Kafka akışı taranıyor...</span>
           </div>
         </div>
       )}
@@ -256,7 +653,7 @@ function ChatArea({ messages, isLoading, onSelectPrompt, messagesEndRef }) {
 
 
 // ============================================================
-// Chat Input Component
+// 7. Chat Input
 // ============================================================
 
 function ChatInput({ inputQuery, setInputQuery, onSendMessage, isLoading }) {
@@ -273,7 +670,7 @@ function ChatInput({ inputQuery, setInputQuery, onSendMessage, isLoading }) {
         <input
           type="text"
           className="chat-input"
-          placeholder="Uçuş kodu (örn: TK10), bölge radar sorusu veya havalimanı yazın..."
+          placeholder="Uçuş kodu (örn: TK10), hız sorgusu (örn: 900 km/s üstü) veya havalimanı yazın..."
           value={inputQuery}
           onChange={(e) => setInputQuery(e.target.value)}
           onKeyDown={handleKeyDown}
@@ -296,11 +693,21 @@ function ChatInput({ inputQuery, setInputQuery, onSendMessage, isLoading }) {
 
 
 // ============================================================
-// Flight Sidebar Component
+// 8. Flight Sidebar (Tracked + Fastest Kafka)
 // ============================================================
 
 function FlightSidebar({ trackedFlights, isLoadingTracked, onRefreshTracked, onSelectFlight, onAirportSearch }) {
   const [airportInput, setAirportInput] = useState("");
+  const [fastestKafka, setFastestKafka] = useState([]);
+  const [sidebarTab, setSidebarTab] = useState("tracked");
+
+  useEffect(() => {
+    fetchKafkaFlights({ min_speed: 850, limit: 6 })
+      .then((data) => {
+        if (data && data.flights) setFastestKafka(data.flights);
+      })
+      .catch((err) => console.warn(err));
+  }, []);
 
   const handleAirportSubmit = (e) => {
     e.preventDefault();
@@ -313,17 +720,25 @@ function FlightSidebar({ trackedFlights, isLoadingTracked, onRefreshTracked, onS
   return (
     <aside className="radar-sidebar">
       <div className="sidebar-header">
-        <div className="sidebar-title">
-          <span>🔥</span>
-          <span>En Çok İzlenen Uçuşlar</span>
+        <div style={{ display: "flex", gap: "6px" }}>
+          <button
+            className={`nav-tab-btn ${sidebarTab === "tracked" ? "active" : ""}`}
+            style={{ padding: "4px 8px", fontSize: "11px" }}
+            onClick={() => setSidebarTab("tracked")}
+          >
+            🔥 En Çok İzlenenler
+          </button>
+          <button
+            className={`nav-tab-btn ${sidebarTab === "fastest" ? "active" : ""}`}
+            style={{ padding: "4px 8px", fontSize: "11px" }}
+            onClick={() => setSidebarTab("fastest")}
+          >
+            ⚡ Hızlılar (&gt;850 km/s)
+          </button>
         </div>
-        <button 
-          className="btn-icon" 
-          onClick={onRefreshTracked} 
-          disabled={isLoadingTracked}
-          title="Listeyi Yenile"
-        >
-          {isLoadingTracked ? "⏳..." : "🔄 Yenile"}
+
+        <button className="btn-icon" onClick={onRefreshTracked} disabled={isLoadingTracked} title="Listeyi Yenile">
+          {isLoadingTracked ? "⏳..." : "🔄"}
         </button>
       </div>
 
@@ -349,48 +764,71 @@ function FlightSidebar({ trackedFlights, isLoadingTracked, onRefreshTracked, onS
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-          {trackedFlights && trackedFlights.length > 0 ? (
-            trackedFlights.map((flight, idx) => {
-              const flightCode = flight.flight_number || flight.callsign || "N/A";
-              return (
-                <div 
-                  key={idx} 
-                  className="flight-item"
-                  onClick={() => onSelectFlight(flightCode)}
-                  title="Detaylarını AI Asistanına Sor"
-                >
-                  <div className="flight-item-top">
-                    <span className="flight-number">{flightCode}</span>
-                    <span className="flight-trackers">
-                      👥 {flight.live_trackers ? flight.live_trackers.toLocaleString() : 0}
-                    </span>
-                  </div>
+          {sidebarTab === "tracked" ? (
+            trackedFlights && trackedFlights.length > 0 ? (
+              trackedFlights.map((flight, idx) => {
+                const flightCode = flight.flight_number || flight.callsign || "N/A";
+                return (
+                  <div key={idx} className="flight-item" onClick={() => onSelectFlight(flightCode)} title="Detaylarını AI Asistanına Sor">
+                    <div className="flight-item-top">
+                      <span className="flight-number">{flightCode}</span>
+                      <span className="flight-trackers">
+                        👥 {flight.live_trackers ? flight.live_trackers.toLocaleString() : 0}
+                      </span>
+                    </div>
 
-                  <div className="flight-route">
-                    <span className="route-pill">{flight.route || "Bilinmiyor"}</span>
-                    {flight.callsign && flight.callsign !== flightCode && (
-                      <span style={{ fontSize: "11px", color: "#64748b" }}>({flight.callsign})</span>
-                    )}
-                  </div>
+                    <div className="flight-route">
+                      <span className="route-pill">{flight.route || "Bilinmiyor"}</span>
+                      {flight.callsign && flight.callsign !== flightCode && (
+                        <span style={{ fontSize: "11px", color: "#64748b" }}>({flight.callsign})</span>
+                      )}
+                    </div>
 
-                  <div className="flight-model">
-                    ✈ {flight.aircraft_type || flight.model || "Uçak tipi belirtilmemiş"}
+                    <div className="flight-model">
+                      ✈ {flight.aircraft_type || flight.model || "Uçak tipi belirtilmemiş"}
+                    </div>
                   </div>
-                </div>
-              );
-            })
+                );
+              })
+            ) : (
+              <div style={{ textAlign: "center", color: "#64748b", fontSize: "13px", padding: "20px 0" }}>
+                {isLoadingTracked ? "Canlı radar verisi çekiliyor..." : "Uçuş verisi bulunamadı."}
+              </div>
+            )
           ) : (
-            <div style={{ textAlign: "center", color: "#64748b", fontSize: "13px", padding: "20px 0" }}>
-              {isLoadingTracked ? "Canlı radar verisi çekiliyor..." : "Uçuş verisi bulunamadı."}
-            </div>
+            fastestKafka && fastestKafka.length > 0 ? (
+              fastestKafka.map((flight, idx) => {
+                const flightCode = flight.flight_number || flight.callsign || "N/A";
+                const spd = flight.telemetry?.ground_speed_kmh || 0;
+                return (
+                  <div key={idx} className="flight-item" onClick={() => onSelectFlight(flightCode)} title="Detaylarını AI Asistanına Sor">
+                    <div className="flight-item-top">
+                      <span className="flight-number">{flightCode}</span>
+                      <span style={{ color: "#fbbf24", fontFamily: "var(--font-mono)", fontSize: "11.5px", fontWeight: "700" }}>
+                        ⚡ {spd} km/s
+                      </span>
+                    </div>
+
+                    <div className="flight-route">
+                      <span className="route-pill">{flight.route?.display || "Bilinmiyor"}</span>
+                      <span style={{ fontSize: "11px", color: "#64748b" }}>{flight.aircraft_model}</span>
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              <div style={{ textAlign: "center", color: "#64748b", fontSize: "13px", padding: "20px 0" }}>
+                Kafka hızlı uçuş verisi yükleniyor...
+              </div>
+            )
           )}
         </div>
 
         <div style={{ marginTop: "auto", background: "rgba(0, 240, 255, 0.03)", border: "1px solid rgba(56, 189, 248, 0.15)", borderRadius: "8px", padding: "12px", fontSize: "11.5px", color: "#94a3b8" }}>
           <strong style={{ color: "#38bdf8", display: "block", marginBottom: "4px" }}>
-            🛠️ 5 Canlı Havacılık Aracı:
+            🛠️ 11 Aktif MCP Aracı:
           </strong>
-          Uçuş telemetrisi, havayolu arama, hava sahası tarama, global izlenme ve havalimanı verisi.
+          FlightRadar canlı aramalar + Kafka 1200 uçuş hız, bölge ve istatistik filtreleri.
         </div>
       </div>
     </aside>
@@ -399,10 +837,11 @@ function FlightSidebar({ trackedFlights, isLoadingTracked, onRefreshTracked, onS
 
 
 // ============================================================
-// Main Application Component
+// 9. Main Application Component
 // ============================================================
 
 function App() {
+  const [currentView, setCurrentView] = useState("chat");
   const [messages, setMessages] = useState([]);
   const [inputQuery, setInputQuery] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -447,6 +886,8 @@ function App() {
   const handleSendMessage = async (textToSend) => {
     const query = (textToSend || inputQuery).trim();
     if (!query || isLoading) return;
+
+    setCurrentView("chat");
 
     const userMsg = { role: "user", content: query };
     setMessages((prev) => [...prev, userMsg]);
@@ -509,28 +950,48 @@ function App() {
     <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
       <Header
         statusInfo={statusInfo}
+        currentView={currentView}
+        onViewChange={(view) => setCurrentView(view)}
         onClearChat={handleClearChat}
         onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
         isSidebarOpen={isSidebarOpen}
       />
 
       <main className="app-container">
-        <section className="chat-column">
-          <ChatArea
-            messages={messages}
-            isLoading={isLoading}
-            onSelectPrompt={handleSelectPrompt}
-            messagesEndRef={messagesEndRef}
-          />
+        {/* Chat Mode */}
+        {currentView === "chat" && (
+          <section className="chat-column">
+            <ChatArea
+              messages={messages}
+              isLoading={isLoading}
+              onSelectPrompt={handleSelectPrompt}
+              messagesEndRef={messagesEndRef}
+            />
 
-          <ChatInput
-            inputQuery={inputQuery}
-            setInputQuery={setInputQuery}
-            onSendMessage={() => handleSendMessage()}
-            isLoading={isLoading}
-          />
-        </section>
+            <ChatInput
+              inputQuery={inputQuery}
+              setInputQuery={setInputQuery}
+              onSendMessage={() => handleSendMessage()}
+              isLoading={isLoading}
+            />
+          </section>
+        )}
 
+        {/* Kafka Dashboard Mode */}
+        {currentView === "kafka" && (
+          <section className="chat-column" style={{ background: "rgba(13, 20, 36, 0.5)" }}>
+            <KafkaDashboard onAskFlight={handleSelectFlight} />
+          </section>
+        )}
+
+        {/* Kafka Logs Mode */}
+        {currentView === "logs" && (
+          <section className="chat-column" style={{ background: "rgba(13, 20, 36, 0.5)" }}>
+            <KafkaLogsView />
+          </section>
+        )}
+
+        {/* Right Sidebar */}
         {isSidebarOpen && (
           <FlightSidebar
             trackedFlights={trackedFlights}
@@ -545,7 +1006,9 @@ function App() {
   );
 }
 
-// Mount the React Application
+// ============================================================
+// 10. Mount Root
+// ============================================================
 const rootElement = document.getElementById("root");
 if (rootElement) {
   const root = ReactDOM.createRoot(rootElement);

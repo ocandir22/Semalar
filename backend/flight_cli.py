@@ -14,8 +14,9 @@ if sys.platform == "win32":
 
 
 async def execute_cli_query(query: str):
-    print(f"\n💬 Soru: \"{query}\"")
-    print(f"📡 AI modeline iletiliyor ve canlı MCP telemetri araçları kontrol ediliyor...")
+    """Executes a single natural language aviation query and prints tool calls and response."""
+    print(f"\n💬 Query: \"{query}\"")
+    print(f"📡 Dispatching to AI model and checking live MCP telemetry tools...")
     
     res = await ask_flight_agent(query)
     
@@ -23,26 +24,26 @@ async def execute_cli_query(query: str):
         tool_calls = res.get("tool_calls", [])
         if tool_calls:
             for tc in tool_calls:
-                print(f"⚙️  [MCP Araç Çağrısı] {tc.get('name')}({tc.get('args')})")
-            print(f"📥 [MCP Yanıtı Alındı]")
+                print(f"⚙️  [MCP Tool Call] {tc.get('name')}({tc.get('args')})")
+            print(f"📥 [MCP Response Received]")
 
         model_name = res.get("model", "")
         provider = res.get("provider", "AI").upper()
         answer = res.get("answer", "")
         
-        print(f"\n✈️ [{provider} - {model_name} Canlı Havacılık Yanıtı]:\n{answer}\n" + "=" * 60)
+        print(f"\n✈️ [{provider} - {model_name} Live Aviation Response]:\n{answer}\n" + "=" * 60)
         return answer
     else:
         error_msg = res.get("answer") or res.get("error")
-        print(f"❌ Hata: {error_msg}\n" + "=" * 60)
+        print(f"❌ Error: {error_msg}\n" + "=" * 60)
         return None
 
 
 async def main():
     info = get_agent_info()
     print("=" * 60)
-    print("✈️ Semalar — Canlı Uçuş ve Havacılık AI İstemcisi (Terminal Modu)")
-    print(f"🔧 Aktif Sağlayıcı (LLM_PROVIDER) : {info['provider'].upper()}")
+    print("✈️ Semalar — Live Flight & Aviation AI Client (Terminal Mode)")
+    print(f"🔧 Active Provider (LLM_PROVIDER) : {info['provider'].upper()}")
     print(f"🧠 Model                          : {info['model']}")
     print(f"📡 MCP Server URL                 : {info['mcp_url']}")
     print("=" * 60)
@@ -54,13 +55,13 @@ async def main():
         return
 
     # Interactive chat mode
-    print("\n💡 Canlı Uçuş ve Uçak Takip Modu: Sorunuzu yazın (çıkmak için 'exit'):")
-    print("Örnek Sorular:")
-    print("  • THY10 nolu uçak şu an nerede, irtifası kaç ve uçağın modeli ne?")
-    print("  • Dünyada şu an en çok takip edilen ilk 3 uçuş hangisi?")
-    print("  • İstanbul (41.0082, 28.9784) semalarında uçan uçakları göster")
-    print("  • Pegasus'un (PGT) havadaki uçaklarını listele")
-    print("  • IST ve SAW havalimanı bilgileri nelerdir?\n")
+    print("\n💡 Live Flight & Aircraft Tracking Mode: Type your question (type 'exit' to quit):")
+    print("Sample Queries:")
+    print("  • Where is flight THY10 right now, what is its altitude and aircraft model?")
+    print("  • What are the top 3 most tracked flights in the world right now?")
+    print("  • Show flights currently in the skies above Istanbul (41.0082, 28.9784)")
+    print("  • List airborne Pegasus (PGT) flights")
+    print("  • What are the details for IST and SAW airports?\n")
 
     while True:
         try:
@@ -69,15 +70,18 @@ async def main():
             if not user_input:
                 continue
             if user_input.lower() in ["exit", "quit", "q"]:
-                print("İyi uçuşlar!")
+                print("Have a safe flight!")
                 break
             await execute_cli_query(user_input)
         except (KeyboardInterrupt, EOFError):
-            print("\nOturum sonlandırıldı.")
+            print("\nSession terminated.")
             break
         except Exception as e:
-            print(f"❌ Beklenmeyen Hata: {e}")
+            print(f"❌ Unexpected Error: {e}")
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit, asyncio.CancelledError):
+        print("\nHave a safe flight!")
