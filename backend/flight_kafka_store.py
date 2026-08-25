@@ -11,8 +11,8 @@ if sys.platform == "win32":
 
 
 def calculate_haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """İki koordinat arasındaki küresel mesafeyi km cinsinden hesaplar (Haversine formülü)."""
-    R = 6371.0  # Dünya yarıçapı (km)
+    """Calculates spherical distance between two coordinates in kilometers using Haversine formula."""
+    R = 6371.0  # Earth's radius (km)
     dlat = math.radians(lat2 - lat1)
     dlon = math.radians(lon2 - lon1)
     a = math.sin(dlat / 2) ** 2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2) ** 2
@@ -21,28 +21,27 @@ def calculate_haversine_distance(lat1: float, lon1: float, lat2: float, lon2: fl
 
 
 class FlightKafkaStore:
-    """Kafka'daki 'live-flights' topic'inden canlı uçuş verilerini tüketen (Consume),
-    bu verileri bellekte (In-Memory) ultra hızlı sorgulanabilir şekilde indeksleyen ve
-    MCP araçları için sorgu metotları sunan Store sınıfı.
+    """Store class that consumes live flight telemetry from Kafka topic 'live-flights',
+    indexes them in-memory for sub-millisecond querying, and provides query interfaces for MCP tools.
     """
 
     def __init__(self, bootstrap_servers: str = "localhost:9092", topic: str = "live-flights"):
         self.bootstrap_servers = bootstrap_servers
         self.topic = topic
         
-        # Bellek İçi İndeksler (In-Memory Data Structures)
+        # In-Memory Indexes
         self.flights: Dict[str, Dict[str, Any]] = {}          # flight_id -> flight
         self.by_flight_number: Dict[str, str] = {}            # FLIGHT_NUM -> flight_id
         self.by_callsign: Dict[str, str] = {}                 # CALLSIGN -> flight_id
         self.by_registration: Dict[str, str] = {}             # REG -> flight_id
         self.last_sync_time: float = 0.0
 
-        # Başlatılırken Kafka'dan verileri çek
+        # Load initial telemetry records from Kafka
         self.sync_from_kafka()
 
     def sync_from_kafka(self, max_records: int = 5000, timeout_ms: int = 3000) -> int:
-        """Kafka topic'indeki en güncel verileri okuyup bellek içi indeksleri günceller."""
-        print(f"📥 Kafka'dan veriler çekiliyor (Topic: {self.topic}, Server: {self.bootstrap_servers})...")
+        """Consumes latest records from Kafka topic and synchronizes in-memory search indexes."""
+        print(f"📥 Consuming telemetry from Kafka (Topic: {self.topic}, Server: {self.bootstrap_servers})...")
         start_time = time.time()
         
         try:
@@ -55,7 +54,7 @@ class FlightKafkaStore:
                 value_deserializer=lambda m: json.loads(m.decode('utf-8'))
             )
         except Exception as e:
-            print(f"⚠️ Kafka bağlantı hatası: {e}")
+            print(f"⚠️ Kafka connection error: {e}")
             return len(self.flights)
 
         consumed_count = 0
@@ -68,7 +67,7 @@ class FlightKafkaStore:
                 flight_id = flight.get("flight_id") or str(message.offset)
                 self.flights[flight_id] = flight
 
-                # İndeksleri güncelle
+                # Update search indexes
                 f_num = str(flight.get("flight_number") or "").strip().upper()
                 if f_num:
                     self.by_flight_number[f_num] = flight_id
@@ -89,14 +88,14 @@ class FlightKafkaStore:
 
         self.last_sync_time = time.time()
         elapsed = round(self.last_sync_time - start_time, 2)
-        print(f"✅ Kafka Senkronizasyonu Tamamlandı: {len(self.flights)} uçuş hafızada ({elapsed} sn).")
+        print(f"✅ Kafka Synchronization Complete: {len(self.flights)} flights indexed in memory ({elapsed}s).")
         return len(self.flights)
 
     def find_flight(self, query: str) -> Dict[str, Any]:
-        """Uçuş numarası, çağrı işareti, tescil veya ID ile Kafka hafızasından uçağı bulur."""
+        """Finds a flight in Kafka memory by flight number, callsign, registration or flight ID."""
         clean_q = query.strip().upper()
 
-        # 1. Tam Eşleşmeler
+        # 1. Exact Matches
         flight_id = (
             self.by_flight_number.get(clean_q) or
             self.by_callsign.get(clean_q) or
@@ -111,7 +110,7 @@ class FlightKafkaStore:
                 "flight": self.flights[flight_id]
             }
 
-        # 2. Kısmi Arama (Contains)
+        # 2. Substring Search
         for f_id, f in self.flights.items():
             f_num = str(f.get("flight_number") or "").upper()
             c_sign = str(f.get("callsign") or "").upper()
@@ -127,11 +126,11 @@ class FlightKafkaStore:
         return {
             "status": "not_found",
             "source": "kafka_in_memory_stream",
-            "message": f"Kafka akışında '{query}' için aktif uçuş kaydı bulunamadı (Toplam taranan: {len(self.flights)} uçuş)."
+            "message": f"No active flight record found in Kafka stream for '{query}' (Total indexed: {len(self.flights)} flights)."
         }
 
     def find_by_airline(self, airline_code: str, limit: int = 15) -> Dict[str, Any]:
-        """Belirli bir havayoluna ait (IATA/ICAO örn: THY, TK, PGT, DLH) uçuşları listeler."""
+        """Filters flights in Kafka memory belonging to a specific airline (IATA/ICAO e.g. THY, TK, PGT, DLH)."""
         clean_code = airline_code.strip().upper()
         matched = []
 
@@ -154,7 +153,7 @@ class FlightKafkaStore:
         }
 
     def find_nearby(self, latitude: float, longitude: float, radius_km: float = 150.0, limit: int = 15) -> Dict[str, Any]:
-        """Belirtilen koordinat merkezli yarıçap içindeki uçakları mesafe sırasına göre listeler."""
+        """Finds flights within a specified radius (km) around center coordinates, ordered by distance."""
         nearby = []
 
         for f in self.flights.values():
@@ -169,7 +168,7 @@ class FlightKafkaStore:
                     flight_copy["distance_to_center_km"] = dist
                     nearby.append(flight_copy)
 
-        # Mesafeye göre en yakından en uzağa sırala
+        # Sort by distance ascending
         nearby.sort(key=lambda x: x["distance_to_center_km"])
 
         return {
@@ -183,11 +182,11 @@ class FlightKafkaStore:
         }
 
     def find_flights_above_speed(self, min_speed_kmh: float = 800.0, limit: int = 15) -> Dict[str, Any]:
-        """Belirtilen yer hızının (km/s) üzerinde seyreden süpersonik / yüksek hızlı uçuşları listeler.
+        """Filters high-speed / supersonic flights in the Kafka buffer exceeding specified ground speed (km/h).
         
         Args:
-            min_speed_kmh: Filtrelenecek minimum yer hızı (km/s cinsinden, örn: 800 veya 900)
-            limit: Döndürülecek maksimum uçak sayısı (varsayılan: 15)
+            min_speed_kmh: Minimum ground speed threshold (in km/h, e.g. 800 or 900)
+            limit: Maximum number of flights to return (default: 15)
         """
         fast_flights = []
 
@@ -198,7 +197,7 @@ class FlightKafkaStore:
             if speed_kmh is not None and speed_kmh >= min_speed_kmh:
                 fast_flights.append(f)
 
-        # En hızlıdan en yavaşa sırala
+        # Sort descending by speed
         fast_flights.sort(
             key=lambda x: x.get("telemetry", {}).get("ground_speed_kmh", 0) or 0,
             reverse=True
@@ -214,9 +213,9 @@ class FlightKafkaStore:
         }
 
     def get_telemetry_stats(self) -> Dict[str, Any]:
-        """Kafka'daki tüm uçuş havuzunun hız, irtifa ve havayolu istatistiklerini çıkarır."""
+        """Calculates statistical summary across all flights in Kafka (speed, altitude, airlines)."""
         if not self.flights:
-            return {"status": "empty", "message": "Kafka deposunda veri yok."}
+            return {"status": "empty", "message": "No data in Kafka store."}
 
         speeds = []
         altitudes = []
@@ -228,7 +227,7 @@ class FlightKafkaStore:
             alt = t.get("altitude_feet")
             airline = f.get("airline_iata") or f.get("airline_icao")
 
-            if spd is not None and spd > 50:  # Havadaki uçaklar
+            if spd is not None and spd > 50:  # Airborne aircraft
                 speeds.append(spd)
             if alt is not None and alt > 1000:
                 altitudes.append(alt)
@@ -257,19 +256,19 @@ class FlightKafkaStore:
         }
 
 
-# Global Singleton Store Instance (Diğer modüller buradan doğrudan erişebilir)
+# Global Singleton Store Instance
 kafka_store = FlightKafkaStore()
 
 
 if __name__ == "__main__":
     store = FlightKafkaStore()
-    print("\n--- 1. GENEL İSTATİSTİKLER ---")
+    print("\n--- 1. OVERALL TELEMETRY STATS ---")
     print(json.dumps(store.get_telemetry_stats(), indent=2, ensure_ascii=False))
 
-    print("\n--- 2. HIZI 850 KM/S ÜZERİNDEKİ UÇAKLAR (Kullanıcı İsteği Tool) ---")
+    print("\n--- 2. FLIGHTS ABOVE 850 KM/H ---")
     fast = store.find_flights_above_speed(min_speed_kmh=850.0, limit=3)
     print(json.dumps(fast, indent=2, ensure_ascii=False))
 
-    print("\n--- 3. İSTANBUL ÇEVRESİNDEKİ UÇAKLAR (41.0082, 28.9784) ---")
+    print("\n--- 3. FLIGHTS NEAR ISTANBUL (41.0082, 28.9784) ---")
     nearby = store.find_nearby(41.0082, 28.9784, radius_km=300, limit=2)
     print(json.dumps(nearby, indent=2, ensure_ascii=False))

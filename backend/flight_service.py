@@ -102,7 +102,7 @@ def get_flight_info(query: str) -> Dict[str, Any]:
     if not target_flight_id:
         return {
             "status": "not_found",
-            "message": f"Uçuş '{query}' için şu an havadaki canlı uçuşlar arasında aktif telemetri kaydı bulunamadı. Uçak henüz kalkmamış, inmiş veya radar kapsama alanı dışında olabilir."
+            "message": f"No active live telemetry found for flight '{query}'. The aircraft may not have departed yet, has landed, or is outside radar coverage."
         }
 
     # Tier 3: Fetch Comprehensive Details
@@ -152,7 +152,7 @@ def get_flight_info(query: str) -> Dict[str, Any]:
     registration = aircraft.get("registration")
 
     airline = details.get("airline", {}).get("name") if isinstance(details, dict) else None
-    flight_status = details.get("status", {}).get("text") if isinstance(details, dict) else "Havada (Canlı Radar)"
+    flight_status = details.get("status", {}).get("text") if isinstance(details, dict) else "En Route (Live Radar)"
 
     airport_info = details.get("airport") if isinstance(details, dict) and isinstance(details.get("airport"), dict) else {}
     origin_airport = airport_info.get("origin") if isinstance(airport_info.get("origin"), dict) else {}
@@ -191,7 +191,7 @@ def get_flight_info(query: str) -> Dict[str, Any]:
         "callsign": callsign or (target_flight_obj.callsign if target_flight_obj else None),
         "airline": airline or (target_flight_obj.airline_icao if target_flight_obj else None),
         "aircraft": {
-            "model": aircraft_model or (target_flight_obj.aircraft_code if target_flight_obj else "Belirtilmemiş"),
+            "model": aircraft_model or (target_flight_obj.aircraft_code if target_flight_obj else "Unspecified"),
             "registration": registration or (target_flight_obj.registration if target_flight_obj else None)
         },
         "flight_status": flight_status,
@@ -218,13 +218,13 @@ def search_airline_flights(airline_code: str, limit: int = 15) -> Dict[str, Any]
     try:
         flights = fr_api.get_flights(airline=clean_code)
     except Exception as e:
-        return {"status": "error", "message": f"Havayolu uçuşları çekilirken hata: {str(e)}"}
+        return {"status": "error", "message": f"Error retrieving airline flights: {str(e)}"}
 
     if not flights:
         return {
             "status": "not_found",
             "airline_code": clean_code,
-            "message": f"'{clean_code}' kodlu havayolu için şu anda havada aktif uçuş tespit edilemedi."
+            "message": f"No active airborne flights found for airline code '{clean_code}'."
         }
 
     results = []
@@ -262,7 +262,7 @@ def get_flights_over_region(latitude: float, longitude: float, radius_km: float 
     try:
         flights = fr_api.get_flights(bounds=bounds)
     except Exception as e:
-        return {"status": "error", "message": f"Bölgesel radar taraması sırasında hata: {str(e)}"}
+        return {"status": "error", "message": f"Error during regional radar scan: {str(e)}"}
 
     flights_in_radius = []
     for f in flights:
@@ -300,7 +300,7 @@ def get_most_tracked_flights(limit: int = 10) -> Dict[str, Any]:
         tracked = fr_api.get_most_tracked()
         flights_data = tracked.get("data", []) if isinstance(tracked, dict) else []
     except Exception as e:
-        return {"status": "error", "message": f"En çok takip edilen uçuşlar alınamadı: {str(e)}"}
+        return {"status": "error", "message": f"Failed to fetch most-tracked flights: {str(e)}"}
 
     results = []
     for item in flights_data[:limit]:
@@ -327,12 +327,12 @@ def get_airport_info(airport_code: str) -> Dict[str, Any]:
     try:
         airport = fr_api.get_airport_details(clean_code)
     except Exception as e:
-        return {"status": "error", "message": f"Havalimanı bilgisi alınamadı ({clean_code}): {str(e)}"}
+        return {"status": "error", "message": f"Failed to fetch airport info ({clean_code}): {str(e)}"}
 
     if not airport or not isinstance(airport, dict) or "details" not in airport:
         return {
             "status": "not_found",
-            "message": f"'{clean_code}' kodlu havalimanı FlightRadar veritabanında bulunamadı."
+            "message": f"Airport '{clean_code}' was not found in the FlightRadar database."
         }
 
     details = airport.get("details", {})

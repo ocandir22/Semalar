@@ -53,11 +53,11 @@ try:
 except Exception:
     pass
 
-print("✅ MCP Kafka İstek Günlüğü (Audit Logger) aktif: Topic 'mcp-requests'")
+print("✅ MCP Kafka Request Audit Logger active: Topic 'mcp-requests'")
 
 
 def log_mcp_to_kafka(tool_name: str, args: dict, result: Any, elapsed_ms: float):
-    """Gelen MCP isteklerini anlık olarak Kafka 'mcp-requests' topic'ine ve bellek kuyruğuna yazar."""
+    """Logs incoming MCP tool requests in real time to the Kafka 'mcp-requests' topic and in-memory ring buffer."""
     try:
         status = "success"
         matched_count = None
@@ -88,7 +88,7 @@ def log_mcp_to_kafka(tool_name: str, args: dict, result: Any, elapsed_ms: float)
 
 
 def audit_tool(name: str):
-    """Tüm MCP araç çağrılarını yakalayıp Kafka'ya kaydeden dekoratör."""
+    """Decorator that intercepts all MCP tool calls and records execution metrics to Kafka."""
     def decorator(func):
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
@@ -251,20 +251,20 @@ def refresh_kafka_stream() -> Dict[str, Any]:
     total = kafka_store.sync_from_kafka()
     return {
         "status": "success",
-        "message": f"Kafka akışı senkronize edildi. Toplam {total} aktif uçuş hafızada güncel.",
+        "message": f"Kafka stream synchronized. Total {total} active flights in memory cache.",
         "total_cached_flights": total
     }
 
 
 # Registry of all MCP Tools available on this Server
 MCP_TOOLS_REGISTRY = {
-    # 1. Proje Live Tools
+    # 1. Project Live Tools
     "get_flight_info": get_flight_info,
     "search_airline_flights": search_airline_flights,
     "get_flights_over_region": get_flights_over_region,
     "get_most_tracked_flights": get_most_tracked_flights,
     "get_airport_info": get_airport_info,
-    # 2. Proje Kafka Tools
+    # 2. Project Kafka Tools
     "get_flights_above_speed": get_flights_above_speed,
     "get_flight_from_kafka": get_flight_from_kafka,
     "get_flights_over_region_from_kafka": get_flights_over_region_from_kafka,
@@ -282,7 +282,7 @@ async def api_tools_execute(request):
         args = data.get("args", {})
 
         if tool_name not in MCP_TOOLS_REGISTRY:
-            return JSONResponse({"status": "error", "error": f"Tool '{tool_name}' bu MCP sunucusunda bulunamadı."}, status_code=404)
+            return JSONResponse({"status": "error", "error": f"Tool '{tool_name}' not found on this MCP server."}, status_code=404)
 
         tool_func = MCP_TOOLS_REGISTRY[tool_name]
 
@@ -328,7 +328,7 @@ async def api_chat(request):
         message = data.get("message", "").strip()
         project_mode = data.get("project", "auto")
         if not message:
-            return JSONResponse({"status": "error", "error": "Boş mesaj gönderilemez."}, status_code=400)
+            return JSONResponse({"status": "error", "error": "Message cannot be empty."}, status_code=400)
         
         result = await ask_flight_agent(message, project_mode=project_mode, mcp_url="http://localhost:8000/mcp")
         return JSONResponse(result)
@@ -337,7 +337,7 @@ async def api_chat(request):
         return JSONResponse({
             "status": "error",
             "error": str(e),
-            "answer": f"İstek işlenirken sunucu hatası oluştu: {e}"
+            "answer": f"Server error occurred while processing request: {e}"
         }, status_code=500)
 
 
@@ -361,17 +361,17 @@ async def api_status(request):
         "model": agent_info["model"],
         "mcp_url": "http://localhost:8000/mcp",
         "tools": [
-            {"name": "get_flight_info", "description": "Canlı uçuş ve telemetri arama (TK10, TC-JYA vb.)"},
-            {"name": "search_airline_flights", "description": "Havayolu aktif uçuşları (THY, PGT vb.)"},
-            {"name": "get_flights_over_region", "description": "Bölgesel radar tarama (enlem, boylam, yarıçap)"},
-            {"name": "get_most_tracked_flights", "description": "Dünyada en çok izlenen canlı uçuşlar"},
-            {"name": "get_airport_info", "description": "Havalimanı bilgileri ve koordinatları (IST, SAW vb.)"},
-            {"name": "get_flights_above_speed", "description": "Kafka akışından belirli hızın üzerindeki süpersonik/hızlı uçaklar"},
-            {"name": "get_flight_from_kafka", "description": "Kafka canlı telemetri deposundan anlık uçuş arama"},
-            {"name": "get_flights_over_region_from_kafka", "description": "Kafka telemetri akışından bölgesel radar sorgusu"},
-            {"name": "search_airline_from_kafka", "description": "Kafka telemetri akışından havayolu uçuşlarını arama"},
-            {"name": "get_kafka_stream_stats", "description": "Kafka 1200+ uçuş akışının hız, irtifa ve havayolu istatistikleri"},
-            {"name": "refresh_kafka_stream", "description": "Kafka 'live-flights' topic'inden hafızayı anlık tazeleme"}
+            {"name": "get_flight_info", "description": "Live flight and telemetry search (e.g. TK10, TC-JYA)"},
+            {"name": "search_airline_flights", "description": "Airline active airborne flights (e.g. THY, PGT)"},
+            {"name": "get_flights_over_region", "description": "Regional radar search (latitude, longitude, radius)"},
+            {"name": "get_most_tracked_flights", "description": "Top live most-tracked flights worldwide"},
+            {"name": "get_airport_info", "description": "Airport details and coordinates (e.g. IST, SAW)"},
+            {"name": "get_flights_above_speed", "description": "Kafka stream supersonic/high-speed flight filter"},
+            {"name": "get_flight_from_kafka", "description": "Instant flight search from Kafka telemetry buffer"},
+            {"name": "get_flights_over_region_from_kafka", "description": "Regional radar search from Kafka telemetry buffer"},
+            {"name": "search_airline_from_kafka", "description": "Airline flight search from Kafka telemetry buffer"},
+            {"name": "get_kafka_stream_stats", "description": "Kafka 1200+ stream speed, altitude, and airline telemetry stats"},
+            {"name": "refresh_kafka_stream", "description": "Instantly refresh memory store from Kafka 'live-flights' topic"}
         ]
     })
 
@@ -465,7 +465,7 @@ async def api_kafka_sync(request):
         count = kafka_store.sync_from_kafka()
         return JSONResponse({
             "status": "success",
-            "message": f"Kafka akışı senkronize edildi. Toplam {count} uçuş bellekte.",
+            "message": f"Kafka stream synchronized. Total {count} flights in memory.",
             "total_cached_flights": count
         })
     except Exception as e:
@@ -489,7 +489,7 @@ FRONTEND_DIR = os.path.join(PARENT_DIR, "frontend")
 
 
 async def serve_index(request):
-    """Serves 1. Proje: FlightRadar24 Canlı Radar & AI Chat (index.html)."""
+    """Serves 1. Project: FlightRadar24 Live Radar & AI Chat (index.html)."""
     index_file = os.path.join(FRONTEND_DIR, "index.html")
     if os.path.exists(index_file):
         with open(index_file, "r", encoding="utf-8") as f:
@@ -502,11 +502,11 @@ async def serve_index(request):
                 "Expires": "0"
             }
         )
-    return HTMLResponse("<h1>Semalar 1. Proje (index.html) bulunamadı.</h1>")
+    return HTMLResponse("<h1>Semalar 1. Project (index.html) not found.</h1>")
 
 
 async def serve_kafka(request):
-    """Serves 2. Proje: Apache Kafka 1200 Telemetri & Hız Dashboard'u (kafka.html)."""
+    """Serves 2. Project: Apache Kafka 1200 Telemetry & Speed Dashboard (kafka.html)."""
     kafka_file = os.path.join(FRONTEND_DIR, "kafka.html")
     if os.path.exists(kafka_file):
         with open(kafka_file, "r", encoding="utf-8") as f:
@@ -519,7 +519,7 @@ async def serve_kafka(request):
                 "Expires": "0"
             }
         )
-    return HTMLResponse("<h1>Semalar 2. Proje (kafka.html) bulunamadı.</h1>")
+    return HTMLResponse("<h1>Semalar 2. Project (kafka.html) not found.</h1>")
 
 
 app.add_route("/api/tools/execute", api_tools_execute, methods=["POST"])
@@ -543,11 +543,11 @@ if os.path.exists(FRONTEND_DIR):
 
 if __name__ == "__main__":
     print("=" * 65)
-    print("✈️ Semalar — Canlı Uçuş Radarı & Apache Kafka Telemetri Platformu")
+    print("✈️ Semalar — Live Flight Radar & Apache Kafka Telemetry Platform")
     print("📡 MCP Endpoint              : http://localhost:8000/mcp")
-    print("🔴 1. Proje (Canlı Radar UI) : http://localhost:8000")
-    print("⚡ 2. Proje (Kafka Dashboard): http://localhost:8000/kafka")
-    print("📊 Apache Kafka UI Paneli    : http://localhost:8080")
+    print("🔴 1. Project (Live Radar UI): http://localhost:8000")
+    print("⚡ 2. Project (Kafka Cockpit): http://localhost:8000/kafka")
+    print("📊 Apache Kafka UI Panel     : http://localhost:8080")
     print("=" * 65)
     uvicorn.run(app, host="0.0.0.0", port=8000)
 

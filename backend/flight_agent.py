@@ -76,22 +76,22 @@ def _sync_http_post(url: str, payload: dict, timeout: float = 15.0) -> dict:
 
 
 SYSTEM_INSTRUCTION = (
-    "Sen havacılık, uçak telemetrisi, canlı uçuş radarı ve Apache Kafka canlı telemetri deposu konusunda uzman, net ve doğrudan yanıt veren bir AI asistanısın.\n"
-    "Kullanıcıların sorularına yanıt vermek için SADECE ve SADECE sana sağlanan 11 MCP Tool aracını kullan.\n\n"
-    "🎯 ARAÇ SEÇİM REHBERİ (Smart Tool Selection):\n"
-    "1. Uçuş Bilgisi / Nerede / İrtifa / Hız Soruları: 'get_flight_info' (canlı radar) veya 'get_flight_from_kafka' (Kafka deposu) aracını çağır.\n"
-    "2. Belirli Bir Hızın Üzerindeki Uçaklar (örn: 800 km/s, 900 km/s, 1000 km/s üstü en hızlı uçaklar): 'get_flights_above_speed' aracını çağır.\n"
-    "3. Bölgesel / Koordinat Soruları (örn: İstanbul, Ankara, New York semalarında uçanlar): 'get_flights_over_region' veya 'get_flights_over_region_from_kafka' aracını çağır.\n"
-    "4. Havayolu Filoları (örn: THY, Pegasus, Lufthansa uçakları): 'search_airline_flights' veya 'search_airline_from_kafka' aracını çağır.\n"
-    "5. En Çok İzlenen Canlı Uçuşlar: 'get_most_tracked_flights' aracını çağır.\n"
-    "6. Havalimanı Bilgisi (örn: IST, SAW, LHR, JFK): 'get_airport_info' aracını çağır.\n"
-    "7. Kafka Akış İstatistikleri (ortalama hız, tepe irtifa, toplam uçak): 'get_kafka_stream_stats' aracını çağır.\n\n"
-    "📌 YANIT FORMATI KURALLARI:\n"
-    "• Uçuş verilerini, irtifayı, hızları veya modelleri asla uydurma. Yalnızca tool'dan dönen gerçek JSON değerlerini kullan.\n"
-    "• İrtifayı hem feet hem metre cinsinden belirt (örnek: 37.000 ft / ~11.277 m).\n"
-    "• Hızı hem knot hem km/s cinsinden belirt (örnek: 480 kts / ~889 km/s).\n"
-    "• Uçak modelini (Boeing 777-300ER, Airbus A321neo vb.) ve rotasını (IST ➔ JFK) mutlaka vurgula.\n"
-    "• Cevapları kısa, net, anlaşılır ve madde işaretli liste formatında sun."
+    "You are an expert aviation, aircraft telemetry, live radar, and Apache Kafka live flight telemetry stream AI assistant.\n"
+    "To answer user questions, you MUST strictly and exclusively use the provided MCP tools.\n\n"
+    "🎯 TOOL SELECTION GUIDE:\n"
+    "1. Flight details / Location / Altitude / Speed queries: Call 'get_flight_info' (live radar) or 'get_flight_from_kafka' (Kafka store).\n"
+    "2. High speed / Supersonic flights (e.g. above 800 km/h, 900 km/h, 1000 km/h): Call 'get_flights_above_speed'.\n"
+    "3. Regional / Coordinate queries (e.g. flights over Istanbul, Ankara, London): Call 'get_flights_over_region' or 'get_flights_over_region_from_kafka'.\n"
+    "4. Airline fleets (e.g. THY, Turkish Airlines, Pegasus, Lufthansa): Call 'search_airline_flights' or 'search_airline_from_kafka'.\n"
+    "5. Top most-tracked live flights: Call 'get_most_tracked_flights'.\n"
+    "6. Airport details (e.g. IST, SAW, LHR, JFK): Call 'get_airport_info'.\n"
+    "7. Kafka stream statistics (average speed, top altitude, total flights): Call 'get_kafka_stream_stats'.\n\n"
+    "📌 RESPONSE FORMAT GUIDELINES:\n"
+    "• Never hallucinate flight telemetry or models. Only use exact data returned by the tools.\n"
+    "• Report altitude in both feet and meters (e.g. 37,000 ft / ~11,277 m).\n"
+    "• Report ground speed in both knots and km/h (e.g. 480 kts / ~889 km/h).\n"
+    "• Highlight aircraft model (e.g. Boeing 777-300ER, Airbus A321neo) and route (e.g. IST ➔ JFK).\n"
+    "• Provide clear, concise, bulleted responses."
 )
 
 
@@ -106,7 +106,7 @@ def clean_model_output(text: str) -> str:
 def extract_text_from_response(response) -> str:
     """Extracts text from candidate parts even if thought/reasoning or function response is present."""
     if not response:
-        return "(Yanıt alınamadı)"
+        return "(No response received)"
     if hasattr(response, "text") and response.text:
         return clean_model_output(response.text)
     if hasattr(response, "candidates") and response.candidates:
@@ -115,7 +115,7 @@ def extract_text_from_response(response) -> str:
             text_parts = [p.text for p in cand.content.parts if hasattr(p, "text") and p.text]
             if text_parts:
                 return clean_model_output("\n".join(text_parts))
-    return "(Yanıt alınamadı)"
+    return "(No response received)"
 
 
 
@@ -145,119 +145,119 @@ def get_agent_info() -> Dict[str, str]:
 
 
 # ============================================================
-# 11 MCP Tools Direct Definitions & Local Executor
+# 11 MCP Tools Direct Definitions & Remote Executor
 # ============================================================
 
 LOCAL_MCP_DEFINITIONS = [
     {
         "name": "get_flight_info",
-        "description": "FlightRadar24 canlı ADS-B ağından uçuş kodu (TK10, THY10) veya kuyruk tescili ile anlık konum, irtifa, yer hızı ve uçak modelini getirir.",
+        "description": "Retrieves real-time live ADS-B coordinates, altitude, ground speed, route, and aircraft model for a flight number (e.g. 'TK10', 'PC2020') or tail registration from FlightRadar24.",
         "parameters": {
             "type": "object",
             "properties": {
-                "flight_code": {"type": "string", "description": "Uçuş numarası (örn: TK10, THY10) veya tescil (örn: TC-JYA)"}
+                "flight_code": {"type": "string", "description": "Flight number (e.g. 'TK10', 'THY10') or registration (e.g. 'TC-JYA')"}
             },
             "required": ["flight_code"]
         }
     },
     {
         "name": "search_airline_flights",
-        "description": "Belirli bir havayolunun (THY, PGT, DLH, BAW) FlightRadar24'teki canlı havadaki uçuşlarını listeler.",
+        "description": "Lists live airborne flights currently operated by a specific airline (e.g. 'THY', 'PGT', 'DLH', 'BAW') on FlightRadar24.",
         "parameters": {
             "type": "object",
             "properties": {
-                "airline_code": {"type": "string", "description": "Havayolu ICAO/IATA kodu (örn: THY, TK, PGT, PC)"},
-                "limit": {"type": "integer", "description": "Döndürülecek maksimum uçuş sayısı (varsayılan: 10)"}
+                "airline_code": {"type": "string", "description": "Airline ICAO or IATA code (e.g. 'THY', 'TK', 'PGT', 'PC')"},
+                "limit": {"type": "integer", "description": "Maximum number of flights to return (default: 10)"}
             },
             "required": ["airline_code"]
         }
     },
     {
         "name": "get_flights_over_region",
-        "description": "Belirli bir coğrafi koordinatın etrafında belirli bir yarıçap (km) içinde uçan canlı uçakları listeler.",
+        "description": "Finds live flights flying within a given radius (km) around a specific geographic coordinate (latitude, longitude) on FlightRadar24.",
         "parameters": {
             "type": "object",
             "properties": {
-                "latitude": {"type": "number", "description": "Merkez enlem (örn: 41.0082)"},
-                "longitude": {"type": "number", "description": "Merkez boylam (örn: 28.9784)"},
-                "radius_km": {"type": "number", "description": "Arama yarıçapı km (varsayılan: 100)"},
-                "limit": {"type": "integer", "description": "Maksimum uçak sayısı (varsayılan: 15)"}
+                "latitude": {"type": "number", "description": "Center latitude in decimal degrees (e.g. 41.0082)"},
+                "longitude": {"type": "number", "description": "Center longitude in decimal degrees (e.g. 28.9784)"},
+                "radius_km": {"type": "number", "description": "Search radius in kilometers (default: 100)"},
+                "limit": {"type": "integer", "description": "Maximum number of flights to return (default: 15)"}
             },
             "required": ["latitude", "longitude"]
         }
     },
     {
         "name": "get_most_tracked_flights",
-        "description": "FlightRadar24 canlı verisinde dünya genelinde anlık olarak en çok takip edilen popüler uçuşları listeler.",
+        "description": "Fetches the top live most-tracked flights in the world right now on FlightRadar24.",
         "parameters": {
             "type": "object",
             "properties": {
-                "limit": {"type": "integer", "description": "Döndürülecek uçuş sayısı (varsayılan: 10)"}
+                "limit": {"type": "integer", "description": "Number of top tracked flights to return (default: 10)"}
             }
         }
     },
     {
         "name": "get_airport_info",
-        "description": "IATA veya ICAO kodu verilen havalimanının (IST, SAW, LHR, JFK) koordinatlarını, şehir ve ülke detaylarını getirir.",
+        "description": "Retrieves airport coordinates, city, country, and details for a given 3-letter IATA or 4-letter ICAO airport code (e.g. 'IST', 'SAW', 'LHR', 'JFK').",
         "parameters": {
             "type": "object",
             "properties": {
-                "airport_code": {"type": "string", "description": "Havalimanı IATA veya ICAO kodu (örn: IST, SAW, LHR)"}
+                "airport_code": {"type": "string", "description": "Airport IATA or ICAO code (e.g. 'IST', 'SAW', 'LHR')"}
             },
             "required": ["airport_code"]
         }
     },
     {
         "name": "get_flights_above_speed",
-        "description": "Apache Kafka telemetri akışından belirli bir yer hızının (km/s) üzerindeki süpersonik / en hızlı uçakları filtreler.",
+        "description": "Filters and lists live flights from the Apache Kafka telemetry stream flying at or above a specified ground speed in km/h (e.g. 800 km/h, 900 km/h).",
         "parameters": {
             "type": "object",
             "properties": {
-                "min_speed_kmh": {"type": "number", "description": "Filtrelenecek minimum yer hızı km/s (örn: 800 veya 900)"},
-                "limit": {"type": "integer", "description": "Maksimum uçak sayısı (varsayılan: 15)"}
+                "min_speed_kmh": {"type": "number", "description": "Minimum ground speed filter in km/h (e.g. 800 or 900)"},
+                "limit": {"type": "integer", "description": "Maximum number of flights to return (default: 15)"}
             }
         }
     },
     {
         "name": "get_flight_from_kafka",
-        "description": "Apache Kafka 1200+ uçuşluk telemetri deposundan uçuş numarası veya tescil ile anlık uçuş ve telemetri arar.",
+        "description": "Finds a flight instantly with sub-millisecond latency from the Apache Kafka 1,200 live flight buffer by flight number or registration.",
         "parameters": {
             "type": "object",
             "properties": {
-                "flight_code": {"type": "string", "description": "Uçuş kodu (örn: TK10, SABIR741) veya tescil (örn: TC-LJA)"}
+                "flight_code": {"type": "string", "description": "Flight number (e.g. 'TK10', 'SABIR741') or registration (e.g. 'TC-LJA')"}
             },
             "required": ["flight_code"]
         }
     },
     {
         "name": "get_flights_over_region_from_kafka",
-        "description": "Apache Kafka telemetri akışından belirli koordinat etrafındaki yarıçap içinde uçan uçakları filtreler.",
+        "description": "Finds live flights within a coordinate radius from the Apache Kafka telemetry buffer.",
         "parameters": {
             "type": "object",
             "properties": {
-                "latitude": {"type": "number", "description": "Merkez enlem (örn: 41.0082)"},
-                "longitude": {"type": "number", "description": "Merkez boylam (örn: 28.9784)"},
-                "radius_km": {"type": "number", "description": "Arama yarıçapı km (varsayılan: 100)"},
-                "limit": {"type": "integer", "description": "Maksimum uçak sayısı (varsayılan: 15)"}
+                "latitude": {"type": "number", "description": "Center latitude in decimal degrees (e.g. 41.0082)"},
+                "longitude": {"type": "number", "description": "Center longitude in decimal degrees (e.g. 28.9784)"},
+                "radius_km": {"type": "number", "description": "Search radius in kilometers (default: 100)"},
+                "limit": {"type": "integer", "description": "Maximum number of flights to return (default: 15)"}
             },
             "required": ["latitude", "longitude"]
         }
     },
     {
         "name": "search_airline_from_kafka",
-        "description": "Apache Kafka telemetri deposundaki belirli bir havayoluna ait uçuşları listeler.",
+        "description": "Searches flights for a given airline in the Apache Kafka live flight buffer.",
         "parameters": {
             "type": "object",
             "properties": {
-                "airline_code": {"type": "string", "description": "Havayolu ICAO/IATA kodu (örn: THY, TK, PGT)"},
-                "limit": {"type": "integer", "description": "Maksimum uçak sayısı (varsayılan: 10)"}
+                "airline_code": {"type": "string", "description": "Airline ICAO or IATA code (e.g. 'THY', 'TK', 'PGT')"},
+                "limit": {"type": "integer", "description": "Maximum number of flights to return (default: 10)"}
             },
             "required": ["airline_code"]
         }
     },
     {
         "name": "get_kafka_stream_stats",
-        "description": "Apache Kafka'daki 1200 uçaklık telemetri havuzunun hız (maks/ortalama), irtifa ve havayolu istatistiklerini getirir.",
+        "description": "Retrieves real-time analytics across the Apache Kafka 1,200 aircraft buffer, including max/average speeds, altitudes, and airline distribution.",
         "parameters": {
             "type": "object",
             "properties": {}
@@ -265,11 +265,11 @@ LOCAL_MCP_DEFINITIONS = [
     },
     {
         "name": "refresh_kafka_stream",
-        "description": "Apache Kafka 'live-flights' topic'inden bellek havuzunu sıfırdan tazeler.",
+        "description": "Refreshes and synchronizes the in-memory cache with the latest messages from the Kafka 'live-flights' topic.",
         "parameters": {
             "type": "object",
             "properties": {
-                "target_count": {"type": "integer", "description": "Tazelenecek hedef uçuş sayısı (varsayılan: 1200)"}
+                "target_count": {"type": "integer", "description": "Target number of flight records to sync (default: 1200)"}
             }
         }
     }
@@ -296,9 +296,9 @@ async def execute_mcp_tool(tool_name: str, tool_args: dict, mcp_url: Optional[st
         try:
             return json.loads(err_text)
         except Exception:
-            return {"status": "error", "error": f"MCP Sunucusu Hatası (HTTP {e.code}): {err_text}"}
+            return {"status": "error", "error": f"MCP Server Error (HTTP {e.code}): {err_text}"}
     except Exception as e:
-        return {"status": "error", "error": f"MCP Sunucusuna ulaşılamadı ({endpoint}): {e}"}
+        return {"status": "error", "error": f"Failed to reach MCP Server ({endpoint}): {e}"}
 
 
 
@@ -325,31 +325,31 @@ LIVE_MCP_DEFINITIONS = [
 ]
 
 KAFKA_SYSTEM_INSTRUCTION = (
-    "Sen Apache Kafka 1200 Uçaklık Canlı Telemetri Deposu ve Havacılık Radarı Asistanısın.\n"
-    "Kullanıcının sorularına yanıt vermek için SADECE ve SADECE sana sağlanan KAFKA MCP ARAÇLARINI KULLAN:\n"
-    "1. Uçuş Bilgisi / Nerede / İrtifa / Hız Soruları: 'get_flight_from_kafka' aracını çağır.\n"
-    "2. Belirli Bir Hızın Üzerindeki Uçaklar (örn: 800 km/s, 900 km/s üstü): 'get_flights_above_speed' aracını çağır.\n"
-    "3. Bölgesel / Koordinat Soruları (örn: İstanbul, koordinat yarıçapı): 'get_flights_over_region_from_kafka' aracını çağır.\n"
-    "4. Havayolu Filosu (örn: THY, Pegasus): 'search_airline_from_kafka' aracını çağır.\n"
-    "5. Kafka İstatistikleri: 'get_kafka_stream_stats' aracını çağır.\n\n"
-    "📌 KURALLAR:\n"
-    "• Uçuş verilerini asla uydurma. Yalnızca Kafka tool'undan dönen gerçek değerleri kullan.\n"
-    "• İrtifayı hem feet hem metre, hızı hem knot hem km/s cinsinden belirt.\n"
-    "• Cevapları kısa, net, anlaşılır ve madde işaretli liste formatında sun."
+    "You are an AI Aviation Assistant specialized in the Apache Kafka 1,200 live aircraft telemetry stream.\n"
+    "To answer questions, you MUST strictly use ONLY the provided KAFKA MCP TOOLS:\n"
+    "1. Flight Info / Location / Altitude / Speed: Call 'get_flight_from_kafka'.\n"
+    "2. Speed Filtering (e.g. flights above 800 km/h or 900 km/h): Call 'get_flights_above_speed'.\n"
+    "3. Regional / Coordinate queries (e.g. radius around coordinates): Call 'get_flights_over_region_from_kafka'.\n"
+    "4. Airline fleet searches: Call 'search_airline_from_kafka'.\n"
+    "5. Kafka telemetry statistics: Call 'get_kafka_stream_stats'.\n\n"
+    "📌 RULES:\n"
+    "• Never fabricate data. Only use exact values returned from the Kafka tool.\n"
+    "• State altitude in both feet and meters, speed in both knots and km/h.\n"
+    "• Provide concise, clean, bulleted summaries."
 )
 
 LIVE_SYSTEM_INSTRUCTION = (
-    "Sen FlightRadar24 Canlı ADS-B Uçuş Radarı ve AI Havacılık Asistanısın.\n"
-    "Kullanıcının sorularına yanıt vermek için SADECE ve SADECE sana sağlanan CANLI FLIGHTRADAR24 ARAÇLARINI KULLAN:\n"
-    "1. Uçuş Bilgisi / Nerede / İrtifa / Hız Soruları: 'get_flight_info' aracını çağır.\n"
-    "2. Havayolu Aktif Uçuşları: 'search_airline_flights' aracını çağır.\n"
-    "3. Bölgesel / Koordinat Radarı: 'get_flights_over_region' aracını çağır.\n"
-    "4. En Çok İzlenen Canlı Uçuşlar: 'get_most_tracked_flights' aracını çağır.\n"
-    "5. Havalimanı Detayları: 'get_airport_info' aracını çağır.\n\n"
-    "📌 KURALLAR:\n"
-    "• Uçuş verilerini asla uydurma. Yalnızca canlı FlightRadar tool'undan dönen değerleri kullan.\n"
-    "• İrtifayı hem feet hem metre, hızı hem knot hem km/s cinsinden belirt.\n"
-    "• Cevapları kısa, net ve madde işaretli liste formatında sun."
+    "You are an AI Aviation Assistant specialized in live FlightRadar24 ADS-B aircraft radar tracking.\n"
+    "To answer questions, you MUST strictly use ONLY the provided LIVE FLIGHTRADAR24 MCP TOOLS:\n"
+    "1. Flight Info / Location / Altitude / Speed: Call 'get_flight_info'.\n"
+    "2. Airline Active Airborne Flights: Call 'search_airline_flights'.\n"
+    "3. Regional / Coordinate Radar: Call 'get_flights_over_region'.\n"
+    "4. Top Most-Tracked Flights: Call 'get_most_tracked_flights'.\n"
+    "5. Airport Details: Call 'get_airport_info'.\n\n"
+    "📌 RULES:\n"
+    "• Never fabricate data. Only use exact values returned from the live FlightRadar tool.\n"
+    "• State altitude in both feet and meters, speed in both knots and km/h.\n"
+    "• Provide concise, clean, bulleted summaries."
 )
 
 
@@ -425,11 +425,11 @@ async def call_gemini_with_retry(genai_client, model: str, contents: list, confi
                 else:
                     raise e
                     
-    raise last_error if last_error else Exception("Tüm model denemeleri başarısız oldu.")
+    raise last_error if last_error else Exception("All model attempts failed.")
 
 
 # ============================================================
-# Main AI Processing Function (Instant Direct Local Execution)
+# Main AI Processing Function (Remote HTTP MCP Execution)
 # ============================================================
 
 async def ask_flight_agent(user_query: str, project_mode: str = "auto", mcp_url: Optional[str] = None) -> Dict[str, Any]:
@@ -448,7 +448,7 @@ async def ask_flight_agent(user_query: str, project_mode: str = "auto", mcp_url:
     else:
         # Auto detection based on keywords
         q_lower = user_query.lower()
-        if any(k in q_lower for k in ["kafka", "900", "800", "hız", "hızlı", "km/s", "km/h", "süpersonik", "depo", "havuz"]):
+        if any(k in q_lower for k in ["kafka", "900", "800", "speed", "fast", "km/s", "km/h", "supersonic", "buffer", "stream", "hız", "hızlı"]):
             active_tools_defs = KAFKA_MCP_DEFINITIONS
             active_instruction = KAFKA_SYSTEM_INSTRUCTION
         else:
@@ -466,7 +466,7 @@ async def ask_flight_agent(user_query: str, project_mode: str = "auto", mcp_url:
         if not GEMINI_API_KEY or GEMINI_API_KEY.strip() in ["", "your_gemini_api_key_here"]:
             return {
                 "status": "error",
-                "answer": "GEMINI_API_KEY .env dosyasında tanımlı değil.",
+                "answer": "GEMINI_API_KEY is not configured in .env file.",
                 "tool_calls": [],
                 "model": GEMINI_MODEL,
                 "provider": provider,
@@ -494,7 +494,7 @@ async def ask_flight_agent(user_query: str, project_mode: str = "auto", mcp_url:
         except Exception as e:
             return {
                 "status": "error",
-                "answer": f"Gemini API Hatası: {e}",
+                "answer": f"Gemini API Error: {e}",
                 "tool_calls": [],
                 "model": GEMINI_MODEL,
                 "provider": provider,
@@ -545,7 +545,7 @@ async def ask_flight_agent(user_query: str, project_mode: str = "auto", mcp_url:
             except Exception as e:
                 return {
                     "status": "error",
-                    "answer": f"Gemini Yanıt Oluşturma Hatası: {e}",
+                    "answer": f"Gemini Response Error: {e}",
                     "tool_calls": tool_calls_executed,
                     "model": active_model,
                     "provider": provider,
@@ -596,7 +596,7 @@ async def ask_flight_agent(user_query: str, project_mode: str = "auto", mcp_url:
         if not api_key:
             return {
                 "status": "error",
-                "answer": f"{provider.upper()}_API_KEY .env dosyasında tanımlı değil.",
+                "answer": f"{provider.upper()}_API_KEY is not configured in .env file.",
                 "tool_calls": [],
                 "model": model_name,
                 "provider": provider,
@@ -624,7 +624,7 @@ async def ask_flight_agent(user_query: str, project_mode: str = "auto", mcp_url:
         except Exception as e:
             return {
                 "status": "error",
-                "answer": f"{provider.upper()} API Hatası: {e}",
+                "answer": f"{provider.upper()} API Error: {e}",
                 "tool_calls": [],
                 "model": model_name,
                 "provider": provider,
@@ -662,7 +662,7 @@ async def ask_flight_agent(user_query: str, project_mode: str = "auto", mcp_url:
                     messages=messages,
                     temperature=0.0
                 )
-                answer = final_completion.choices[0].message.content or "(Yanıt alınamadı)"
+                answer = final_completion.choices[0].message.content or "(No response received)"
                 return {
                     "status": "success",
                     "answer": clean_model_output(answer),
@@ -673,14 +673,14 @@ async def ask_flight_agent(user_query: str, project_mode: str = "auto", mcp_url:
             except Exception as e:
                 return {
                     "status": "error",
-                    "answer": f"{provider.upper()} Yanıt Oluşturma Hatası: {e}",
+                    "answer": f"{provider.upper()} Response Error: {e}",
                     "tool_calls": tool_calls_executed,
                     "model": model_name,
                     "provider": provider,
                     "error": str(e)
                 }
         else:
-            answer = response_message.content or "(Yanıt alınamadı)"
+            answer = response_message.content or "(No response received)"
             return {
                 "status": "success",
                 "answer": clean_model_output(answer),
