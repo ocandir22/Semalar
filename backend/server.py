@@ -33,14 +33,58 @@ from flight_service import (
     get_airport_info as fetch_airport_info
 )
 from flight_kafka_store import kafka_store
-from flight_agent import ask_flight_agent, get_agent_info, _recent_audit_logs, log_mcp_to_kafka
+from flight_producer import FlightKafkaProducer
+from flight_agent import ask_flight_agent, get_agent_info
 
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8")
 
+# In-Memory Audit Log Ring Buffer & Kafka Audit Producer
+_recent_audit_logs = collections.deque(maxlen=100)
+_audit_producer = None
+try:
+    _audit_producer = KafkaProducer(
+        bootstrap_servers="localhost:9092",
+        value_serializer=lambda v: json.dumps(v, ensure_ascii=False).encode("utf-8"),
+        key_serializer=lambda k: str(k).encode("utf-8") if k else None,
+        acks=0,
+        retries=1
+    )
+except Exception:
+    pass
+
 print("✅ MCP Kafka İstek Günlüğü (Audit Logger) aktif: Topic 'mcp-requests'")
 
 
+def log_mcp_to_kafka(tool_name: str, args: dict, result: Any, elapsed_ms: float):
+    """Gelen MCP isteklerini anlık olarak Kafka 'mcp-requests' topic'ine ve bellek kuyruğuna yazar."""
+    try:
+        status = "success"
+        matched_count = None
+        if isinstance(result, dict):
+            status = result.get("status", "success")
+            if "total_matches" in result:
+                matched_count = result["total_matches"]
+            elif "returned_count" in result:
+                matched_count = result["returned_count"]
+            elif "flights" in result and isinstance(result["flights"], list):
+                matched_count = len(result["flights"])
+            elif "total_tracked" in result:
+                matched_count = result["total_tracked"]
+
+        payload = {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "tool_name": tool_name,
+            "arguments": args,
+            "status": status,
+            "matched_records": matched_count,
+            "execution_time_ms": round(elapsed_ms, 2)
+        }
+        _recent_audit_logs.appendleft(payload)
+        if _audit_producer:
+            _audit_producer.send("mcp-requests", key=tool_name, value=payload)
+    except Exception:
+        pass
 
 
 def audit_tool(name: str):
@@ -75,14 +119,16 @@ mcp_server = MCPServer(
 
 @mcp_server.tool()
 @audit_tool("get_flight_info")
-def get_flight_info(query: str) -> Dict[str, Any]:
+def get_flight_info(query: str = "", flight_code: str = "") -> Dict[str, Any]:
     """Finds a live flight by flight number (e.g. 'TK10', 'PC2020', 'BA123'), callsign (e.g. 'THY10', 'PGT45K'), or aircraft registration tail (e.g. 'TC-LJA').
     Returns live coordinates, altitude (ft/m), ground speed (kts/kmh), heading, aircraft model (e.g. Boeing 777-3F2(ER)), origin and destination airports, and status.
     
     Args:
         query: Flight number, callsign, or aircraft registration (e.g. 'TK10', 'THY10', 'PC2020')
+        flight_code: Alternative parameter alias for query
     """
-    return fetch_flight_info(query)
+    target = query or flight_code or ""
+    return fetch_flight_info(target)
 
 
 @mcp_server.tool()
@@ -153,14 +199,16 @@ def get_flights_above_speed(min_speed_kmh: float = 800.0, limit: int = 15) -> Di
 
 @mcp_server.tool()
 @audit_tool("get_flight_from_kafka")
-def get_flight_from_kafka(query: str) -> Dict[str, Any]:
+def get_flight_from_kafka(query: str = "", flight_code: str = "") -> Dict[str, Any]:
     """Finds a live flight from the Kafka stream cache by flight number (e.g. 'TK10', 'PC2020'), callsign (e.g. 'THY10'), or registration tail (e.g. 'TC-LJA').
     Provides instant sub-millisecond telemetry response from the 1200+ buffered flights.
     
     Args:
         query: Flight number, callsign, or registration.
+        flight_code: Alternative parameter alias for query.
     """
-    return kafka_store.find_flight(query)
+    target = query or flight_code or ""
+    return kafka_store.find_flight(target)
 
 
 @mcp_server.tool()
@@ -206,6 +254,54 @@ def refresh_kafka_stream() -> Dict[str, Any]:
         "message": f"Kafka akışı senkronize edildi. Toplam {total} aktif uçuş hafızada güncel.",
         "total_cached_flights": total
     }
+
+
+# Registry of all MCP Tools available on this Server
+MCP_TOOLS_REGISTRY = {
+    # 1. Proje Live Tools
+    "get_flight_info": get_flight_info,
+    "search_airline_flights": search_airline_flights,
+    "get_flights_over_region": get_flights_over_region,
+    "get_most_tracked_flights": get_most_tracked_flights,
+    "get_airport_info": get_airport_info,
+    # 2. Proje Kafka Tools
+    "get_flights_above_speed": get_flights_above_speed,
+    "get_flight_from_kafka": get_flight_from_kafka,
+    "get_flights_over_region_from_kafka": get_flights_over_region_from_kafka,
+    "search_airline_from_kafka": search_airline_from_kafka,
+    "get_kafka_stream_stats": get_kafka_stream_stats,
+    "refresh_kafka_stream": refresh_kafka_stream,
+}
+
+
+async def api_tools_execute(request):
+    """Executes a requested MCP tool on the server via HTTP RPC for remote AI Agent clients."""
+    try:
+        data = await request.json()
+        tool_name = data.get("tool_name")
+        args = data.get("args", {})
+
+        if tool_name not in MCP_TOOLS_REGISTRY:
+            return JSONResponse({"status": "error", "error": f"Tool '{tool_name}' bu MCP sunucusunda bulunamadı."}, status_code=404)
+
+        tool_func = MCP_TOOLS_REGISTRY[tool_name]
+
+        # Handle parameter aliases safely
+        if tool_name in ["get_flight_info", "get_flight_from_kafka"]:
+            target_val = args.get("flight_code") or args.get("query") or args.get("flight_number") or args.get("callsign") or ""
+            args = {"query": target_val, "flight_code": target_val}
+        elif tool_name == "get_airport_info":
+            code = args.get("airport_code") or args.get("query") or args.get("code") or ""
+            args = {"airport_code": code}
+        elif tool_name in ["search_airline_flights", "search_airline_from_kafka"]:
+            code = args.get("airline_code") or args.get("airline") or args.get("code") or ""
+            limit = int(args.get("limit", 15))
+            args = {"airline_code": code, "limit": limit}
+
+        res = tool_func(**args)
+        return JSONResponse(res)
+    except Exception as e:
+        return JSONResponse({"status": "error", "error": str(e)}, status_code=500)
 
 
 # Expose Streamable HTTP ASGI app (Starlette) on /mcp endpoint
@@ -426,6 +522,7 @@ async def serve_kafka(request):
     return HTMLResponse("<h1>Semalar 2. Proje (kafka.html) bulunamadı.</h1>")
 
 
+app.add_route("/api/tools/execute", api_tools_execute, methods=["POST"])
 app.add_route("/api/chat", api_chat, methods=["POST"])
 app.add_route("/api/tracked", api_tracked, methods=["GET"])
 app.add_route("/api/status", api_status, methods=["GET"])

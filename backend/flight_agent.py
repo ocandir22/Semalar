@@ -54,69 +54,25 @@ FALLBACK_MODELS = [
 ]
 FALLBACK_MODELS = list(dict.fromkeys(FALLBACK_MODELS))
 
-
 import time
-import collections
-import logging
-from datetime import datetime, timezone
-from kafka import KafkaProducer
+import urllib.request
+import urllib.error
 
-# Silence noisy kafka connection logs
-logging.getLogger("kafka").setLevel(logging.WARNING)
 
-from flight_service import (
-    get_flight_info as fetch_flight_info,
-    search_airline_flights as fetch_airline_flights,
-    get_flights_over_region as fetch_flights_over_region,
-    get_most_tracked_flights as fetch_most_tracked_flights,
-    get_airport_info as fetch_airport_info
-)
-from flight_kafka_store import kafka_store
-
-# Shared In-Memory Audit Log Ring Buffer
-_recent_audit_logs = collections.deque(maxlen=100)
-_audit_producer = None
-try:
-    _audit_producer = KafkaProducer(
-        bootstrap_servers="localhost:9092",
-        value_serializer=lambda v: json.dumps(v, ensure_ascii=False).encode("utf-8"),
-        key_serializer=lambda k: str(k).encode("utf-8") if k else None,
-        acks=0,
-        retries=1
+def _sync_http_post(url: str, payload: dict, timeout: float = 15.0) -> dict:
+    """Executes a synchronous HTTP POST JSON request with direct local connection."""
+    # Ensure localhost maps directly to 127.0.0.1
+    url = url.replace("localhost", "127.0.0.1")
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=data,
+        headers={"Content-Type": "application/json", "User-Agent": "SemalarAIAgent/1.0"}
     )
-except Exception:
-    pass
-
-
-def log_mcp_to_kafka(tool_name: str, args: dict, result: Any, elapsed_ms: float):
-    """Gelen MCP isteklerini anlık olarak Kafka 'mcp-requests' topic'ine ve bellek kuyruğuna yazar."""
-    try:
-        status = "success"
-        matched_count = None
-        if isinstance(result, dict):
-            status = result.get("status", "success")
-            if "total_matches" in result:
-                matched_count = result["total_matches"]
-            elif "returned_count" in result:
-                matched_count = result["returned_count"]
-            elif "flights" in result and isinstance(result["flights"], list):
-                matched_count = len(result["flights"])
-            elif "total_tracked" in result:
-                matched_count = result["total_tracked"]
-
-        payload = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "tool_name": tool_name,
-            "arguments": args,
-            "status": status,
-            "matched_records": matched_count,
-            "execution_time_ms": round(elapsed_ms, 2)
-        }
-        _recent_audit_logs.appendleft(payload)
-        if _audit_producer:
-            _audit_producer.send("mcp-requests", key=tool_name, value=payload)
-    except Exception:
-        pass
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    with opener.open(req, timeout=timeout) as response:
+        resp_data = response.read().decode("utf-8")
+        return json.loads(resp_data)
 
 
 SYSTEM_INSTRUCTION = (
@@ -320,52 +276,29 @@ LOCAL_MCP_DEFINITIONS = [
 ]
 
 
-def execute_local_mcp_tool(tool_name: str, tool_args: dict) -> dict:
-    """Executes the requested tool directly in memory in 0 milliseconds and logs to Kafka audit topic."""
-    start_time = time.perf_counter()
-    try:
-        if tool_name == "get_flight_info":
-            # 1. Proje: SADECE Canlı FlightRadar24 ADS-B API
-            res = fetch_flight_info(str(tool_args.get("flight_code", "")))
-        elif tool_name == "get_flight_from_kafka":
-            # 2. Proje: SADECE Apache Kafka 1200 Uçaklık Telemetri Havuzu
-            res = kafka_store.find_flight(str(tool_args.get("flight_code", "")))
-        elif tool_name == "search_airline_flights":
-            # 1. Proje: Canlı FlightRadar Havayolu
-            res = fetch_airline_flights(str(tool_args.get("airline_code", "")), int(tool_args.get("limit", 10)))
-        elif tool_name == "get_flights_over_region":
-            # 1. Proje: Canlı FlightRadar Bölgesel Radar
-            res = fetch_flights_over_region(float(tool_args.get("latitude", 0)), float(tool_args.get("longitude", 0)), float(tool_args.get("radius_km", 100)), int(tool_args.get("limit", 15)))
-        elif tool_name == "get_most_tracked_flights":
-            # 1. Proje: Canlı FlightRadar En Çok İzlenenler
-            res = fetch_most_tracked_flights(int(tool_args.get("limit", 10)))
-        elif tool_name == "get_airport_info":
-            # 1. Proje: Havalimanı Koordinat ve Detayları
-            res = fetch_airport_info(str(tool_args.get("airport_code", "")))
-        elif tool_name == "get_flights_above_speed":
-            # 2. Proje: Kafka Hız Filtresi
-            res = kafka_store.find_flights_above_speed(float(tool_args.get("min_speed_kmh", 800)), int(tool_args.get("limit", 15)))
-        elif tool_name == "get_flights_over_region_from_kafka":
-            # 2. Proje: Kafka Bölgesel Radar
-            res = kafka_store.find_flights_over_region(float(tool_args.get("latitude", 0)), float(tool_args.get("longitude", 0)), float(tool_args.get("radius_km", 100)), int(tool_args.get("limit", 15)))
-        elif tool_name == "search_airline_from_kafka":
-            # 2. Proje: Kafka Havayolu Araması
-            res = kafka_store.search_airline(str(tool_args.get("airline_code", "")), int(tool_args.get("limit", 10)))
-        elif tool_name == "get_kafka_stream_stats":
-            # 2. Proje: Kafka İstatistikleri
-            res = kafka_store.get_telemetry_stats()
-        elif tool_name == "refresh_kafka_stream":
-            # 2. Proje: Kafka Akışını Yenile
-            cnt = kafka_store.sync_from_kafka(int(tool_args.get("target_count", 1200)))
-            res = {"status": "success", "message": f"Kafka'dan {cnt} uçuş tazelendi."}
-        else:
-            res = {"status": "error", "error": f"Bilinmeyen araç: {tool_name}"}
-    except Exception as e:
-        res = {"status": "error", "error": str(e)}
+async def execute_mcp_tool(tool_name: str, tool_args: dict, mcp_url: Optional[str] = None) -> dict:
+    """Executes the requested tool remotely via HTTP RPC against the MCP Server node."""
+    # Resolve base URL (e.g. from parameter or .env)
+    base_url = mcp_url or os.getenv("MCP_SERVER_URL") or os.getenv("PUBLIC_MCP_URL") or "http://localhost:8000"
+    base_url = re.sub(r"/mcp/?$", "", base_url).rstrip("/")
+    endpoint = f"{base_url}/api/tools/execute"
 
-    elapsed_ms = (time.perf_counter() - start_time) * 1000
-    log_mcp_to_kafka(tool_name, tool_args, res, elapsed_ms)
-    return res
+    payload = {
+        "tool_name": tool_name,
+        "args": tool_args
+    }
+
+    try:
+        res = await asyncio.to_thread(_sync_http_post, endpoint, payload, 12.0)
+        return res
+    except urllib.error.HTTPError as e:
+        err_text = e.read().decode("utf-8") if e.fp else str(e)
+        try:
+            return json.loads(err_text)
+        except Exception:
+            return {"status": "error", "error": f"MCP Sunucusu Hatası (HTTP {e.code}): {err_text}"}
+    except Exception as e:
+        return {"status": "error", "error": f"MCP Sunucusuna ulaşılamadı ({endpoint}): {e}"}
 
 
 
@@ -576,8 +509,8 @@ async def ask_flight_agent(user_query: str, project_mode: str = "auto", mcp_url:
                 tool_name = function_call.name
                 tool_args = function_call.args or {}
 
-                # Execute tool directly in memory (0 ms)
-                parsed_json = execute_local_mcp_tool(tool_name, tool_args)
+                # Execute tool remotely via HTTP RPC against MCP Server node
+                parsed_json = await execute_mcp_tool(tool_name, tool_args, mcp_url=mcp_url)
 
                 tool_calls_executed.append({
                     "name": tool_name,
@@ -708,7 +641,7 @@ async def ask_flight_agent(user_query: str, project_mode: str = "auto", mcp_url:
                 except Exception:
                     func_args = {}
 
-                parsed_json = execute_local_mcp_tool(func_name, func_args)
+                parsed_json = await execute_mcp_tool(func_name, func_args, mcp_url=mcp_url)
                 result_text = json.dumps(parsed_json, ensure_ascii=False)
 
                 tool_calls_executed.append({
