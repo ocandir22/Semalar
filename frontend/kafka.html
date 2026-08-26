@@ -84,9 +84,9 @@
                 <div>
                     <div class="brand-title">
                         SEMALAR
-                        <span class="project-badge-tag">2. PROJE: KAFKA 1200 & AI CHAT</span>
+                        <span class="project-badge-tag">2. PROJE: KAFKA CANLI TÜRKİYE AKIŞI</span>
                     </div>
-                    <div class="brand-subtitle">Apache Kafka In-Memory Stream, MCP Tools & AI Aviation Assistant</div>
+                    <div class="brand-subtitle">FlightRadar24 ➔ Apache Kafka Canlı Akış, MCP Araçları & Yapay Zeka Kokpiti</div>
                 </div>
             </div>
 
@@ -371,8 +371,8 @@
                 if (!res.ok) return;
                 const data = await res.json();
                 
-                document.getElementById("kpi-total-flights").textContent = (data.total_flights_in_kafka || 1200).toLocaleString();
-                document.getElementById("kpi-total-airlines").textContent = (data.total_unique_airlines || 159).toLocaleString();
+                document.getElementById("kpi-total-flights").textContent = (data.total_flights_in_kafka !== undefined ? data.total_flights_in_kafka : 0).toLocaleString();
+                document.getElementById("kpi-total-airlines").textContent = (data.total_unique_airlines !== undefined ? data.total_unique_airlines : 0).toLocaleString();
                 document.getElementById("kpi-max-speed").textContent = `${data.speed_kmh?.max || 0} km/s`;
                 document.getElementById("kpi-max-alt").textContent = `${data.altitude_feet?.max ? data.altitude_feet.max.toLocaleString() : 0} ft`;
             } catch (err) {
@@ -484,7 +484,9 @@
             loadFlights();
             loadLogs();
 
-            // Refresh logs badge and list periodically in memory
+            // Refresh telemetry stats, flights and logs periodically in memory
+            setInterval(loadStats, 10000);
+            setInterval(loadFlights, 12000);
             setInterval(loadLogs, 8000);
 
             // Send Chat
