@@ -62,14 +62,40 @@ def kafka_query_stream(
     )
 
 
-# Starlette Application
-app = Starlette(debug=True, routes=mcp_server._routes)
+# Expose Streamable HTTP ASGI app (Starlette) on /mcp endpoint
+app = mcp_server.streamable_http_app()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+async def api_tools_execute(request):
+    """Executes a requested Kafka MCP tool on the server via HTTP RPC for remote AI Agent clients."""
+    try:
+        data = await request.json()
+        tool_name = data.get("tool_name")
+        args = data.get("args", {})
+
+        if tool_name not in ["query_kafka_stream", "kafka_query_stream"]:
+            return JSONResponse({"status": "error", "error": f"Tool '{tool_name}' not found on Kafka MCP server."}, status_code=404)
+
+        if "flight_code" in args and "query" not in args:
+            args["query"] = args.pop("flight_code")
+        if "airline_code" in args and "airline" not in args:
+            args["airline"] = args.pop("airline_code")
+        if "min_speed" in args and "min_speed_kmh" not in args:
+            args["min_speed_kmh"] = args.pop("min_speed")
+        if "speed" in args and "min_speed_kmh" not in args:
+            args["min_speed_kmh"] = args.pop("speed")
+
+        res = kafka_store.query_flights(**args)
+        return JSONResponse(res)
+    except Exception as e:
+        return JSONResponse({"status": "error", "error": str(e)}, status_code=500)
 
 # Background Turkey flight ingestion daemon
 _streamer_stop_event = threading.Event()
@@ -207,6 +233,7 @@ async def serve_kafka(request):
     return HTMLResponse("<h1>Semalar Project #2 (kafka.html) not found.</h1>")
 
 
+app.add_route("/api/tools/execute", api_tools_execute, methods=["POST"])
 app.add_route("/api/chat", api_chat, methods=["POST"])
 app.add_route("/api/kafka/stats", api_kafka_stats, methods=["GET"])
 app.add_route("/api/kafka/flights", api_kafka_flights, methods=["GET"])
