@@ -11,7 +11,10 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
-from flight_collector import FlightDataCollector
+try:
+    from .flight_collector import FlightDataCollector
+except ImportError:
+    from flight_collector import FlightDataCollector
 
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8")

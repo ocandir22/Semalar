@@ -1,7 +1,10 @@
 import math
 import sys
 from typing import Optional, List, Dict, Any
-from geo_service import geo_engine
+try:
+    from core.geo_service import geo_engine
+except ImportError:
+    from geo_service import geo_engine
 try:
     from FlightRadarAPI import FlightRadar24API
 except ImportError:

@@ -26,16 +26,23 @@ from kafka import KafkaProducer
 # Silence noisy kafka connection logs
 logging.getLogger("kafka").setLevel(logging.WARNING)
 
-from flight_service import (
+# Project #1: Live Radar Services & Agent
+from project_live.flight_service import (
     get_flight_info as fetch_flight_info,
     search_airline_flights as fetch_airline_flights,
     get_flights_over_region as fetch_flights_over_region,
     get_most_tracked_flights as fetch_most_tracked_flights,
     get_airport_info as fetch_airport_info
 )
-from flight_kafka_store import kafka_store
-from flight_producer import FlightKafkaProducer
-from flight_agent import ask_flight_agent, get_agent_info
+from project_live.live_agent import ask_live_agent
+
+# Project #2: Kafka Telemetry Services & Agent
+from project_kafka.flight_kafka_store import kafka_store, query_kafka_stream as fetch_kafka_stream
+from project_kafka.flight_producer import FlightKafkaProducer
+from project_kafka.kafka_agent import ask_kafka_agent
+
+# Core LLM Engine
+from core.llm_client import get_agent_info
 
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8")
@@ -293,15 +300,20 @@ app.add_middleware(
 # ============================================================
 
 async def api_chat(request):
-    """Processes user queries via the AI flight agent."""
+    """Processes user queries via dedicated, isolated AI flight agents for each project."""
     try:
         data = await request.json()
         message = data.get("message", "").strip()
-        project_mode = data.get("project", "auto")
+        project_mode = str(data.get("project", "live")).lower().strip()
         if not message:
             return JSONResponse({"status": "error", "error": "Message cannot be empty."}, status_code=400)
-        
-        result = await ask_flight_agent(message, project_mode=project_mode, mcp_url="http://localhost:8000/mcp")
+
+        # Isolated routing: Project #2 (Kafka) vs Project #1 (Live Radar)
+        if project_mode == "kafka":
+            result = await ask_kafka_agent(message)
+        else:
+            result = await ask_live_agent(message)
+
         return JSONResponse(result)
 
     except Exception as e:
@@ -341,8 +353,6 @@ async def api_status(request):
         ]
     })
 
-
-from flight_producer import FlightKafkaProducer
 
 async def api_kafka_stats(request):
     """Returns real-time Kafka flight stream stats."""

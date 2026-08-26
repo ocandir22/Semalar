@@ -72,12 +72,20 @@ graph TD
 ```text
 Semalar/
 ├── backend/
-│   ├── server.py              # Starlette ASGI & FastMCP Server (Port 8000)
-│   ├── flight_agent.py        # Multi-provider AI Agent (Remote HTTP Tool Dispatcher)
-│   ├── flight_kafka_store.py  # In-memory Kafka stream consumer & indexer
-│   ├── flight_producer.py     # Batch & streaming Kafka producer (1200+ flights)
-│   ├── flight_collector.py    # FlightRadar24 raw data scraper & normalizer
-│   ├── flight_service.py      # Direct live FlightRadar24 querying service
+│   ├── core/                  # Shared core infrastructure
+│   │   ├── geo_service.py     # 81-Province GeoJSON boundary & ray-casting PIP engine
+│   │   ├── llm_client.py      # Multi-provider LLM caller (Gemini/Groq/OpenAI/Ollama) & observability
+│   │   └── data/              # tr-cities.json & tr-provinces-catalog.json
+│   ├── project_live/          # 1. Project: Live FlightRadar24 Radar & Airspace
+│   │   ├── flight_service.py  # Direct live FlightRadar24 API service
+│   │   └── live_agent.py      # Isolated Live Radar AI Agent & MCP tools
+│   ├── project_kafka/         # 2. Project: Apache Kafka Telemetry Cockpit
+│   │   ├── flight_collector.py# FlightRadar24 live scraper & normalizer
+│   │   ├── flight_producer.py # Real-time streaming Kafka producer daemon (15s cycle)
+│   │   ├── flight_kafka_store.py # In-memory Kafka stream consumer, indexer & polygon filter
+│   │   └── kafka_agent.py     # Isolated Kafka Telemetry AI Agent & MCP tool
+│   ├── server.py              # Central Starlette ASGI & FastMCP Server (Port 8000)
+│   ├── flight_agent.py        # Backward-compatible agent routing bridge
 │   ├── flight_cli.py          # Interactive terminal aviation AI client
 │   └── test_flight_mcp.py     # Automated MCP protocol verification script
 ├── frontend/

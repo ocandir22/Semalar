@@ -5,7 +5,10 @@ import math
 import time
 from typing import Dict, Any, List, Optional
 from kafka import KafkaConsumer, TopicPartition
-from geo_service import geo_engine
+try:
+    from core.geo_service import geo_engine
+except ImportError:
+    from geo_service import geo_engine
 
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8")
@@ -349,6 +352,11 @@ class FlightKafkaStore:
 
 # Global Singleton Store Instance
 kafka_store = FlightKafkaStore()
+
+
+def query_kafka_stream(**kwargs) -> Dict[str, Any]:
+    """Unified entrypoint for querying the Kafka flight stream."""
+    return kafka_store.query_flights(**kwargs)
 
 
 if __name__ == "__main__":

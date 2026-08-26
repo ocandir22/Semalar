@@ -10,8 +10,10 @@ import unicodedata
 import re
 from typing import Optional, Dict, Any, List, Tuple
 
-# Path to tr-cities.json
+# Paths to geo data (checks core/data first, then backend/data)
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
+if not os.path.exists(DATA_DIR):
+    DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
 GEOJSON_FILE = os.path.join(DATA_DIR, "tr-cities.json")
 
 
