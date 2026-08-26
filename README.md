@@ -192,6 +192,4 @@ You can ask questions in natural language (English or Turkish) in the Web Chat o
 
 ---
 
-## 🛡️ License
 
-This project is open-source and available under the **MIT License**.
