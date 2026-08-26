@@ -54,6 +54,18 @@ async def main():
             res_airline = await session.call_tool("query_kafka_stream", {"airline": "TK", "min_speed_kmh": 800.0, "limit": 2})
             print(res_airline.content[0].text if res_airline.content else res_airline)
 
+            # 6. Test National Airspace Bounding Box: Turkey + Speed >= 800 km/h
+            print("\n" + "=" * 60)
+            print("5️⃣ [MCP TEST] NATIONAL BORDERS: query_kafka_stream(country='TR', min_speed_kmh=800, limit=3)...")
+            res_tr = await session.call_tool("query_kafka_stream", {"country": "TR", "min_speed_kmh": 800.0, "limit": 3})
+            print(res_tr.content[0].text if res_tr.content else res_tr)
+
+            # 7. Test City Airspace: Ankara
+            print("\n" + "=" * 60)
+            print("6️⃣ [MCP TEST] CITY AIRSPACE: query_kafka_stream(region='Ankara', limit=3)...")
+            res_ankara = await session.call_tool("query_kafka_stream", {"region": "Ankara", "limit": 3})
+            print(res_ankara.content[0].text if res_ankara.content else res_ankara)
+
 
 if __name__ == "__main__":
     asyncio.run(main())

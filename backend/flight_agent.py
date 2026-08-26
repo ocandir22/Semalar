@@ -47,32 +47,11 @@ DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
 PUBLIC_MCP_URL = os.getenv("PUBLIC_MCP_URL", "http://localhost:8000/mcp")
 
 # Fallback models for Gemini
-FALLBACK_MODELS = [
+FALLBACK_MODELS = list(dict.fromkeys([
     GEMINI_MODEL,
     "gemini-3.5-flash-lite",
     "gemini-3.7-flash"
-]
-FALLBACK_MODELS = list(dict.fromkeys(FALLBACK_MODELS))
-
-import time
-import urllib.request
-import urllib.error
-
-
-def _sync_http_post(url: str, payload: dict, timeout: float = 15.0) -> dict:
-    """Executes a synchronous HTTP POST JSON request with direct local connection."""
-    # Ensure localhost maps directly to 127.0.0.1
-    url = url.replace("localhost", "127.0.0.1")
-    data = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(
-        url,
-        data=data,
-        headers={"Content-Type": "application/json", "User-Agent": "SemalarAIAgent/1.0"}
-    )
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-    with opener.open(req, timeout=timeout) as response:
-        resp_data = response.read().decode("utf-8")
-        return json.loads(resp_data)
+]))
 
 
 SYSTEM_INSTRUCTION = (
@@ -80,7 +59,7 @@ SYSTEM_INSTRUCTION = (
     "To answer user questions, you MUST strictly and exclusively use the provided MCP tools.\n\n"
     "🎯 TOOL SELECTION GUIDE:\n"
     "1. Live FlightRadar24 queries: Use 'get_flight_info', 'search_airline_flights', 'get_flights_over_region', 'get_most_tracked_flights', 'get_airport_info'.\n"
-    "2. Kafka stream telemetry queries: Use the unified 'query_kafka_stream' tool. It supports compound filtering combining query, airline, min_speed_kmh, latitude, longitude, radius_km, and get_stats simultaneously.\n\n"
+    "2. Kafka stream telemetry queries: Use the unified 'query_kafka_stream' tool. It supports compound filtering combining country='TR', region='Ankara'/'Istanbul', query, airline, min_speed_kmh, coordinates, and get_stats simultaneously.\n\n"
     "📌 RESPONSE FORMAT GUIDELINES:\n"
     "• Never hallucinate flight telemetry or models. Only use exact data returned by the tools.\n"
     "• Report altitude in both feet and meters (e.g. 37,000 ft / ~11,277 m).\n"
@@ -172,16 +151,18 @@ LOCAL_MCP_DEFINITIONS = [
     },
     {
         "name": "get_flights_over_region",
-        "description": "Finds live flights flying within a given radius (km) around a specific geographic coordinate (latitude, longitude) on FlightRadar24.",
+        "description": "Finds live flights flying within national or regional airspace (e.g. Turkey / 'TR', 'Ankara', 'Istanbul') or around specific geographic coordinates on FlightRadar24. Supports speed filtering.",
         "parameters": {
             "type": "object",
             "properties": {
+                "country": {"type": "string", "description": "Official country code or name (e.g. 'TR' or 'Turkey')"},
+                "region": {"type": "string", "description": "Target province or region name. As an intelligent assistant, resolve any colloquial user phrasing (e.g. 'Palandöken', 'Erzurum kenti/şehri', 'Dadaşlar diyarı', 'Boğaz', 'Kordon') to the official province name (e.g. 'Erzurum', 'İstanbul', 'İzmir') or macro-region ('MARMARA', 'EGE', 'TR'). The backend automatically evaluates exact 81-province boundary polygons."},
+                "min_speed_kmh": {"type": "number", "description": "Minimum ground speed filter in km/h. Map expressions like 'hızlı uçaklar', 'ses hızına yakın', 'süpersonik' to appropriate values (e.g. 800 or 900)."},
                 "latitude": {"type": "number", "description": "Center latitude in decimal degrees (e.g. 41.0082)"},
                 "longitude": {"type": "number", "description": "Center longitude in decimal degrees (e.g. 28.9784)"},
                 "radius_km": {"type": "number", "description": "Search radius in kilometers (default: 100)"},
                 "limit": {"type": "integer", "description": "Maximum number of flights to return (default: 15)"}
-            },
-            "required": ["latitude", "longitude"]
+            }
         }
     },
     {
@@ -207,18 +188,20 @@ LOCAL_MCP_DEFINITIONS = [
     },
     {
         "name": "query_kafka_stream",
-        "description": "Unified multi-filter query tool for the Apache Kafka live flight telemetry stream. Supports compound queries combining ground speed, geographic coordinates/radius, airline code, flight number, and stream statistics simultaneously.",
+        "description": "Unified multi-filter query tool for the Apache Kafka live flight telemetry stream. Supports compound queries combining ground speed, country/region boundaries, coordinates/radius, airline, flight number, and stream statistics simultaneously.",
         "parameters": {
             "type": "object",
             "properties": {
                 "query": {"type": "string", "description": "Specific flight number (e.g. 'TK10'), callsign ('THY10'), or registration ('TC-LJA')"},
-                "airline": {"type": "string", "description": "Airline ICAO or IATA code prefix (e.g. 'THY', 'TK', 'PGT', 'DLH')"},
-                "min_speed_kmh": {"type": "number", "description": "Minimum ground speed filter in km/h (e.g. 800 or 900 for fast/supersonic flights)"},
+                "airline": {"type": "string", "description": "Airline code. Map colloquial airline names (e.g. 'Türk Hava Yolları' -> 'THY', 'Pegasus' -> 'PGT', 'AJet' -> 'TKJ' or 'VF', 'Lufthansa' -> 'DLH', 'SunExpress' -> 'SXS')."},
+                "min_speed_kmh": {"type": "number", "description": "Minimum ground speed filter in km/h. Map expressions like 'hızlı uçaklar', 'ses hızına yakın', 'süpersonik' to appropriate values (e.g. 800 or 900)."},
                 "max_speed_kmh": {"type": "number", "description": "Maximum ground speed filter in km/h"},
-                "latitude": {"type": "number", "description": "Center latitude in decimal degrees for regional airspace scan (e.g. 41.0082 for Istanbul)"},
-                "longitude": {"type": "number", "description": "Center longitude in decimal degrees for regional airspace scan (e.g. 28.9784 for Istanbul)"},
+                "country": {"type": "string", "description": "Country code or name to restrict flights strictly within national borders (e.g. 'TR' or 'Turkey')"},
+                "region": {"type": "string", "description": "Target province or region name. As an intelligent assistant, resolve any colloquial user phrasing (e.g. 'Palandöken', 'Erzurum kenti/şehri', 'Dadaşlar diyarı', 'Boğaz', 'Kordon', 'Başkent') to the official Turkish province name (e.g. 'Erzurum', 'İstanbul', 'İzmir', 'Ankara') or macro-region ('MARMARA', 'EGE', 'TR'). The backend automatically evaluates exact 81-province boundary polygons."},
+                "latitude": {"type": "number", "description": "Center latitude in decimal degrees for custom coordinate scan"},
+                "longitude": {"type": "number", "description": "Center longitude in decimal degrees for custom coordinate scan"},
                 "radius_km": {"type": "number", "description": "Search radius around coordinates in kilometers (default: 150)"},
-                "min_altitude_feet": {"type": "number", "description": "Minimum altitude filter in feet"},
+                "min_altitude_feet": {"type": "number", "description": "Minimum altitude filter in feet. Convert user metric requests like '10 bin metre üzeri' (~32,800 ft) to feet."},
                 "get_stats": {"type": "boolean", "description": "Set to true to retrieve overall Kafka stream statistics (max/avg speed, altitude, airline count)"},
                 "limit": {"type": "integer", "description": "Maximum number of flights to return (default: 15)"}
             }
@@ -228,57 +211,35 @@ LOCAL_MCP_DEFINITIONS = [
 
 
 async def execute_mcp_tool(tool_name: str, tool_args: dict, mcp_url: Optional[str] = None) -> dict:
-    """Executes the requested tool remotely via HTTP RPC against the MCP Server node."""
-    # Resolve base URL (e.g. from parameter or .env)
-    base_url = mcp_url or os.getenv("MCP_SERVER_URL") or os.getenv("PUBLIC_MCP_URL") or "http://localhost:8000"
-    base_url = re.sub(r"/mcp/?$", "", base_url).rstrip("/")
-    endpoint = f"{base_url}/api/tools/execute"
-
-    payload = {
-        "tool_name": tool_name,
-        "args": tool_args
-    }
-
+    """Executes the requested MCP tool directly via the local registry for maximum performance and zero network latency."""
     try:
-        res = await asyncio.to_thread(_sync_http_post, endpoint, payload, 12.0)
-        return res
-    except urllib.error.HTTPError as e:
-        err_text = e.read().decode("utf-8") if e.fp else str(e)
-        try:
-            return json.loads(err_text)
-        except Exception:
-            return {"status": "error", "error": f"MCP Server Error (HTTP {e.code}): {err_text}"}
+        from server import MCP_TOOLS_REGISTRY
+        if tool_name in MCP_TOOLS_REGISTRY:
+            fn = MCP_TOOLS_REGISTRY[tool_name]
+            if asyncio.iscoroutinefunction(fn):
+                return await fn(**tool_args)
+            return fn(**tool_args)
+        return {"status": "error", "error": f"Tool '{tool_name}' not found."}
     except Exception as e:
-        return {"status": "error", "error": f"Failed to reach MCP Server ({endpoint}): {e}"}
+        print(f"❌ [Tool Error] {tool_name}: {e}")
+        return {"status": "error", "error": str(e)}
 
 
-
-
-KAFKA_MCP_DEFINITIONS = [
-    d for d in LOCAL_MCP_DEFINITIONS if d["name"] in [
-        "query_kafka_stream"
-    ]
-]
-
-LIVE_MCP_DEFINITIONS = [
-    d for d in LOCAL_MCP_DEFINITIONS if d["name"] in [
-        "get_flight_info",
-        "search_airline_flights",
-        "get_flights_over_region",
-        "get_most_tracked_flights",
-        "get_airport_info"
-    ]
-]
+KAFKA_MCP_DEFINITIONS = [d for d in LOCAL_MCP_DEFINITIONS if d["name"] == "query_kafka_stream"]
+LIVE_MCP_DEFINITIONS = [d for d in LOCAL_MCP_DEFINITIONS if d["name"] != "query_kafka_stream"]
 
 KAFKA_SYSTEM_INSTRUCTION = (
-    "You are an AI Aviation Assistant specialized in the Apache Kafka 1,200 live aircraft telemetry stream.\n"
+    "You are an AI Aviation Assistant specialized in the Apache Kafka live aircraft telemetry stream.\n"
     "To answer questions, you MUST strictly use ONLY the unified KAFKA MCP TOOL: 'query_kafka_stream'.\n\n"
     "💡 HOW TO USE 'query_kafka_stream':\n"
     "• Single flight info / search: pass query='TK10' or registration.\n"
     "• High-speed / supersonic filtering: pass min_speed_kmh=800 or 900.\n"
-    "• Regional / city airspace radar: pass latitude, longitude, and radius_km (e.g. Istanbul is 41.0082, 28.9784).\n"
-    "• Airline filtering: pass airline='THY' or 'PGT'.\n"
-    "• COMPOUND QUERIES: Combine any parameters! (e.g. Istanbul airspace + min_speed_kmh=800 -> pass latitude=41.0082, longitude=28.9784, radius_km=150, min_speed_kmh=800).\n"
+    "• Turkey national airspace: pass country='TR' or region='Turkey' (strictly confines results within Turkish borders!).\n"
+    "• 81 Turkish Provinces (Exact GeoJSON Borders): You handle natural language entity resolution! If the user says 'Palandöken', 'Erzurum kenti/şehri', 'Dadaşlar diyarı', 'Boğaz', 'Kordon', 'Başkent' or any landmark/district, resolve it to the canonical province name (e.g. region='Erzurum', region='Ankara', region='İstanbul'). The Python backend calculates the exact polygon boundary with sub-millisecond ray-casting!\n"
+    "• Airline colloquialisms: Resolve 'Türk Hava Yolları' -> airline='THY', 'Pegasus' -> airline='PGT', 'AJet' -> airline='TKJ', etc.\n"
+    "• Metric to imperial conversion: Convert user metric requests (e.g. '10 bin metre üstü' -> min_altitude_feet=32800).\n"
+    "• Custom Coordinates / Non-Turkish Locations: If a user specifies custom coordinates or a non-provincial landmark, pass latitude, longitude, and radius_km=100.\n"
+    "• COMPOUND QUERIES: Combine any parameters! (e.g. Erzurum + min_speed_kmh=800 -> pass region='Erzurum', min_speed_kmh=800).\n"
     "• Kafka stream statistics: pass get_stats=true.\n\n"
     "📌 RULES:\n"
     "• Never fabricate data. Only use exact values returned from query_kafka_stream.\n"
@@ -290,8 +251,11 @@ LIVE_SYSTEM_INSTRUCTION = (
     "You are an AI Aviation Assistant specialized in live FlightRadar24 ADS-B aircraft radar tracking.\n"
     "To answer questions, you MUST strictly use ONLY the provided LIVE FLIGHTRADAR24 MCP TOOLS:\n"
     "1. Flight Info / Location / Altitude / Speed: Call 'get_flight_info'.\n"
-    "2. Airline Active Airborne Flights: Call 'search_airline_flights'.\n"
-    "3. Regional / Coordinate Radar: Call 'get_flights_over_region'.\n"
+    "2. Airline Active Airborne Flights: Call 'search_airline_flights' (resolve 'Türk Hava Yolları' -> 'THY', etc.).\n"
+    "3. Regional / National Airspace Radar: Call 'get_flights_over_region'.\n"
+    "   • For Turkey national airspace: pass country='TR' or region='Turkey' (and min_speed_kmh if requested).\n"
+    "   • For 81 Turkish Provinces: Resolve user terms ('Palandöken', 'Erzurum kenti', 'Başkent', etc.) to the canonical province name (e.g. region='Erzurum', region='Ankara'). The backend automatically evaluates exact GeoJSON polygon borders!\n"
+    "   • For custom coordinates / landmarks: pass latitude, longitude, and radius_km.\n"
     "4. Top Most-Tracked Flights: Call 'get_most_tracked_flights'.\n"
     "5. Airport Details: Call 'get_airport_info'.\n\n"
     "📌 RULES:\n"

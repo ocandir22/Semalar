@@ -129,6 +129,23 @@ class FlightDataCollector:
         print(f"✨ Successfully normalized {len(normalized_flights)} flight telemetry records.")
         return normalized_flights
 
+    def fetch_turkey_flights(self) -> List[Dict[str, Any]]:
+        """Fetches ALL active live flights within Turkey national airspace (~35.8°-42.2° N, 25.6°-44.8° E) from FlightRadar24.
+        Returns the complete list without any artificial numeric limit.
+        """
+        bounds = "42.2,35.8,25.6,44.8"
+        raw_flights = []
+        try:
+            raw_flights = self.fr_api.get_flights(bounds=bounds)
+        except Exception as e:
+            print(f"❌ Error fetching Turkey flights from FlightRadar24: {e}")
+            return []
+
+        normalized_flights = [self.normalize_flight(f) for f in raw_flights]
+        return normalized_flights
+
+    fetch_all_turkey_flights = fetch_turkey_flights
+
 
 if __name__ == "__main__":
     collector = FlightDataCollector()
