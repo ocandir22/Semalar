@@ -98,18 +98,13 @@ Semalar/
 
 ---
 
-## 📋 Registered MCP Aviation Tools (11 Tools)
+## 📋 Registered MCP Aviation Tools (6 Unified Tools)
 
 Every tool is decorated with `@audit_tool`, which automatically records execution time ($ms$), argument payloads, and record counts to the Kafka `mcp-requests` audit topic in real-time.
 
 | Tool Name | Parameters | Description |
 | :--- | :--- | :--- |
-| **`get_flights_above_speed`** | `min_speed_kmh: float`, `limit: int` | Filters supersonic / high-speed flights from Kafka buffer exceeding threshold (e.g. 850 km/h, 900 km/h). |
-| **`get_flight_from_kafka`** | `flight_code: str` | Sub-millisecond instant lookup for a flight in Kafka memory by flight number, callsign, or tail registration. |
-| **`get_flights_over_region_from_kafka`** | `latitude`, `longitude`, `radius_km` | Regional airspace radar scan against buffered Kafka telemetry using Haversine calculation. |
-| **`search_airline_from_kafka`** | `airline_code: str`, `limit: int` | Instant airline fleet search from Kafka stream (e.g. THY, PGT, DLH, BAW). |
-| **`get_kafka_stream_stats`** | *None* | Statistical summary across Kafka stream: total aircraft, unique airlines, max & average speed and altitude. |
-| **`refresh_kafka_stream`** | *None* | Synchronizes the in-memory cache with the latest messages from the Kafka `live-flights` topic. |
+| **`query_kafka_stream`** | `query`, `airline`, `min_speed_kmh`, `max_speed_kmh`, `latitude`, `longitude`, `radius_km`, `get_stats`, `limit` | **Unified multi-filter query tool for Apache Kafka telemetry.** Enables simultaneous compound filtering across ground speed, geographic coordinates/radius, airline, flight number, and stream statistics in a single sub-millisecond pass. |
 | **`get_flight_info`** | `query: str` | Live global search on FlightRadar24 network by flight number (`TK10`), callsign (`THY9UC`), or registration (`TC-JYA`). |
 | **`search_airline_flights`** | `airline_code: str`, `limit: int` | Direct live FlightRadar query for active airborne flights of a given airline. |
 | **`get_flights_over_region`** | `latitude`, `longitude`, `radius_km` | Direct live FlightRadar regional radar scan around coordinates. |

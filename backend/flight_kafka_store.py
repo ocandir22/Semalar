@@ -91,38 +91,111 @@ class FlightKafkaStore:
         print(f"✅ Kafka Synchronization Complete: {len(self.flights)} flights indexed in memory ({elapsed}s).")
         return len(self.flights)
 
+    def query_flights(
+        self,
+        query: Optional[str] = None,
+        airline: Optional[str] = None,
+        min_speed_kmh: Optional[float] = None,
+        max_speed_kmh: Optional[float] = None,
+        latitude: Optional[float] = None,
+        longitude: Optional[float] = None,
+        radius_km: Optional[float] = None,
+        min_altitude_feet: Optional[float] = None,
+        get_stats: bool = False,
+        limit: int = 15
+    ) -> Dict[str, Any]:
+        """Unified multi-filter query method for the Kafka telemetry buffer.
+        Evaluates all provided constraints (speed, location, airline, query, stats) simultaneously in a single pass.
+        """
+        # If statistics requested, return stream summary
+        if get_stats:
+            return self.get_telemetry_stats()
+
+        clean_q = query.strip().upper() if query and str(query).strip() else None
+        clean_airline = airline.strip().upper() if airline and str(airline).strip() else None
+        has_coords = (latitude is not None and longitude is not None)
+        effective_radius = float(radius_km) if radius_km is not None else (150.0 if has_coords else None)
+
+        matched = []
+        for f in self.flights.values():
+            telemetry = f.get("telemetry", {})
+            spd = telemetry.get("ground_speed_kmh")
+            alt = telemetry.get("altitude_feet")
+            f_lat = telemetry.get("latitude")
+            f_lon = telemetry.get("longitude")
+
+            # 1. Speed Filters
+            if min_speed_kmh is not None and (spd is None or spd < min_speed_kmh):
+                continue
+            if max_speed_kmh is not None and (spd is None or spd > max_speed_kmh):
+                continue
+
+            # 2. Altitude Filter
+            if min_altitude_feet is not None and (alt is None or alt < min_altitude_feet):
+                continue
+
+            # 3. Airline Filter
+            if clean_airline:
+                f_iata = str(f.get("airline_iata") or "").upper()
+                f_icao = str(f.get("airline_icao") or "").upper()
+                callsign = str(f.get("callsign") or "").upper()
+                f_num = str(f.get("flight_number") or "").upper()
+                if (clean_airline not in [f_iata, f_icao] and 
+                    not callsign.startswith(clean_airline) and 
+                    not f_num.startswith(clean_airline)):
+                    continue
+
+            # 4. Flight Query Filter (number / callsign / registration / ID)
+            if clean_q:
+                f_num = str(f.get("flight_number") or "").upper()
+                c_sign = str(f.get("callsign") or "").upper()
+                reg = str(f.get("registration") or "").upper()
+                f_id = str(f.get("flight_id") or "").upper()
+                if clean_q not in f_num and clean_q not in c_sign and clean_q not in reg and clean_q != f_id:
+                    continue
+
+            # 5. Geographic Proximity Filter
+            dist = None
+            if has_coords:
+                if f_lat is None or f_lon is None:
+                    continue
+                dist = calculate_haversine_distance(latitude, longitude, f_lat, f_lon)
+                if effective_radius is not None and dist > effective_radius:
+                    continue
+
+            # Record match
+            if dist is not None:
+                item = dict(f)
+                item["distance_to_center_km"] = dist
+                matched.append(item)
+            else:
+                matched.append(f)
+
+        # Smart Sorting:
+        # If coordinates provided without specific speed filter, sort by distance
+        if has_coords and min_speed_kmh is None:
+            matched.sort(key=lambda x: x.get("distance_to_center_km", 999999))
+        else:
+            # Default sort by ground speed descending
+            matched.sort(key=lambda x: x.get("telemetry", {}).get("ground_speed_kmh", 0) or 0, reverse=True)
+
+        return {
+            "status": "success",
+            "source": "kafka_in_memory_stream",
+            "total_matches": len(matched),
+            "returned_count": min(len(matched), limit),
+            "flights": matched[:limit]
+        }
+
     def find_flight(self, query: str) -> Dict[str, Any]:
         """Finds a flight in Kafka memory by flight number, callsign, registration or flight ID."""
-        clean_q = query.strip().upper()
-
-        # 1. Exact Matches
-        flight_id = (
-            self.by_flight_number.get(clean_q) or
-            self.by_callsign.get(clean_q) or
-            self.by_registration.get(clean_q) or
-            clean_q.lower() if clean_q.lower() in self.flights else None
-        )
-
-        if flight_id and flight_id in self.flights:
+        res = self.query_flights(query=query, limit=1)
+        if res.get("flights"):
             return {
                 "status": "success",
                 "source": "kafka_in_memory_stream",
-                "flight": self.flights[flight_id]
+                "flight": res["flights"][0]
             }
-
-        # 2. Substring Search
-        for f_id, f in self.flights.items():
-            f_num = str(f.get("flight_number") or "").upper()
-            c_sign = str(f.get("callsign") or "").upper()
-            reg = str(f.get("registration") or "").upper()
-
-            if clean_q in f_num or clean_q in c_sign or clean_q in reg:
-                return {
-                    "status": "success",
-                    "source": "kafka_in_memory_stream",
-                    "flight": f
-                }
-
         return {
             "status": "not_found",
             "source": "kafka_in_memory_stream",
@@ -131,86 +204,22 @@ class FlightKafkaStore:
 
     def find_by_airline(self, airline_code: str, limit: int = 15) -> Dict[str, Any]:
         """Filters flights in Kafka memory belonging to a specific airline (IATA/ICAO e.g. THY, TK, PGT, DLH)."""
-        clean_code = airline_code.strip().upper()
-        matched = []
-
-        for f in self.flights.values():
-            iata = str(f.get("airline_iata") or "").upper()
-            icao = str(f.get("airline_icao") or "").upper()
-            callsign = str(f.get("callsign") or "").upper()
-            f_num = str(f.get("flight_number") or "").upper()
-
-            if (clean_code in [iata, icao]) or (callsign.startswith(clean_code)) or (f_num.startswith(clean_code)):
-                matched.append(f)
-
-        return {
-            "status": "success",
-            "source": "kafka_in_memory_stream",
-            "airline_code": clean_code,
-            "total_matches": len(matched),
-            "returned_count": min(len(matched), limit),
-            "flights": matched[:limit]
-        }
+        res = self.query_flights(airline=airline_code, limit=limit)
+        res["airline_code"] = airline_code.strip().upper()
+        return res
 
     def find_nearby(self, latitude: float, longitude: float, radius_km: float = 150.0, limit: int = 15) -> Dict[str, Any]:
         """Finds flights within a specified radius (km) around center coordinates, ordered by distance."""
-        nearby = []
-
-        for f in self.flights.values():
-            telemetry = f.get("telemetry", {})
-            f_lat = telemetry.get("latitude")
-            f_lon = telemetry.get("longitude")
-
-            if f_lat is not None and f_lon is not None:
-                dist = calculate_haversine_distance(latitude, longitude, f_lat, f_lon)
-                if dist <= radius_km:
-                    flight_copy = dict(f)
-                    flight_copy["distance_to_center_km"] = dist
-                    nearby.append(flight_copy)
-
-        # Sort by distance ascending
-        nearby.sort(key=lambda x: x["distance_to_center_km"])
-
-        return {
-            "status": "success",
-            "source": "kafka_in_memory_stream",
-            "center": {"latitude": latitude, "longitude": longitude},
-            "radius_km": radius_km,
-            "total_in_radius": len(nearby),
-            "returned_count": min(len(nearby), limit),
-            "flights": nearby[:limit]
-        }
+        res = self.query_flights(latitude=latitude, longitude=longitude, radius_km=radius_km, limit=limit)
+        res["center"] = {"latitude": latitude, "longitude": longitude}
+        res["radius_km"] = radius_km
+        return res
 
     def find_flights_above_speed(self, min_speed_kmh: float = 800.0, limit: int = 15) -> Dict[str, Any]:
-        """Filters high-speed / supersonic flights in the Kafka buffer exceeding specified ground speed (km/h).
-        
-        Args:
-            min_speed_kmh: Minimum ground speed threshold (in km/h, e.g. 800 or 900)
-            limit: Maximum number of flights to return (default: 15)
-        """
-        fast_flights = []
-
-        for f in self.flights.values():
-            telemetry = f.get("telemetry", {})
-            speed_kmh = telemetry.get("ground_speed_kmh")
-
-            if speed_kmh is not None and speed_kmh >= min_speed_kmh:
-                fast_flights.append(f)
-
-        # Sort descending by speed
-        fast_flights.sort(
-            key=lambda x: x.get("telemetry", {}).get("ground_speed_kmh", 0) or 0,
-            reverse=True
-        )
-
-        return {
-            "status": "success",
-            "source": "kafka_in_memory_stream",
-            "min_speed_kmh": min_speed_kmh,
-            "total_matches": len(fast_flights),
-            "returned_count": min(len(fast_flights), limit),
-            "flights": fast_flights[:limit]
-        }
+        """Filters high-speed / supersonic flights in the Kafka buffer exceeding specified ground speed (km/h)."""
+        res = self.query_flights(min_speed_kmh=min_speed_kmh, limit=limit)
+        res["min_speed_kmh"] = min_speed_kmh
+        return res
 
     def get_telemetry_stats(self) -> Dict[str, Any]:
         """Calculates statistical summary across all flights in Kafka (speed, altitude, airlines)."""
