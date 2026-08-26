@@ -526,5 +526,9 @@ if __name__ == "__main__":
     print("⚡ 2. Project (Kafka Cockpit): http://localhost:8000/kafka")
     print("📊 Apache Kafka UI Panel     : http://localhost:8080")
     print("=" * 65)
+    print("👉 Open in Browser : http://localhost:8000  or  http://localhost:8000/kafka")
+    print("⚠️  NOTE FOR WINDOWS: Do NOT navigate to 'http://0.0.0.0:8000' in browser;")
+    print("   always use 'http://localhost:8000' on the local machine!")
+    print("=" * 65)
     uvicorn.run(app, host="0.0.0.0", port=8000)
 
