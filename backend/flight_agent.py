@@ -104,17 +104,20 @@ def clean_model_output(text: str) -> str:
 
 
 def extract_text_from_response(response) -> str:
-    """Extracts text from candidate parts even if thought/reasoning or function response is present."""
+    """Extracts text from candidate parts safely without triggering non-text warnings."""
     if not response:
         return "(No response received)"
-    if hasattr(response, "text") and response.text:
-        return clean_model_output(response.text)
     if hasattr(response, "candidates") and response.candidates:
         cand = response.candidates[0]
         if hasattr(cand, "content") and cand.content and cand.content.parts:
             text_parts = [p.text for p in cand.content.parts if hasattr(p, "text") and p.text]
             if text_parts:
                 return clean_model_output("\n".join(text_parts))
+    try:
+        if hasattr(response, "text") and response.text:
+            return clean_model_output(response.text)
+    except Exception:
+        pass
     return "(No response received)"
 
 
