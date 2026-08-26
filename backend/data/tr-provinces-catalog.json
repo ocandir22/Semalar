@@ -1,0 +1,1298 @@
+[
+  {
+    "plate": 1,
+    "plate_code": "01",
+    "name": "Adana",
+    "region": "Akdeniz",
+    "center": {
+      "latitude": 36.9849,
+      "longitude": 35.5103
+    },
+    "bbox": {
+      "min_lat": 36.5385,
+      "max_lat": 38.4664,
+      "min_lon": 34.7863,
+      "max_lon": 36.4914
+    }
+  },
+  {
+    "plate": 2,
+    "plate_code": "02",
+    "name": "Adıyaman",
+    "region": "Güneydoğu Anadolu",
+    "center": {
+      "latitude": 37.8545,
+      "longitude": 38.4242
+    },
+    "bbox": {
+      "min_lat": 37.4069,
+      "max_lat": 38.2306,
+      "min_lon": 37.4164,
+      "max_lon": 39.2463
+    }
+  },
+  {
+    "plate": 3,
+    "plate_code": "03",
+    "name": "Afyonkarahisar",
+    "region": "Ege",
+    "center": {
+      "latitude": 38.5914,
+      "longitude": 30.5839
+    },
+    "bbox": {
+      "min_lat": 37.7608,
+      "max_lat": 39.2845,
+      "min_lon": 29.6638,
+      "max_lon": 31.7087
+    }
+  },
+  {
+    "plate": 4,
+    "plate_code": "04",
+    "name": "Ağrı",
+    "region": "Doğu Anadolu",
+    "center": {
+      "latitude": 39.5294,
+      "longitude": 43.4339
+    },
+    "bbox": {
+      "min_lat": 39.0371,
+      "max_lat": 40.0083,
+      "min_lon": 42.2552,
+      "max_lon": 44.4965
+    }
+  },
+  {
+    "plate": 5,
+    "plate_code": "05",
+    "name": "Amasya",
+    "region": "Karadeniz",
+    "center": {
+      "latitude": 40.6875,
+      "longitude": 35.7544
+    },
+    "bbox": {
+      "min_lat": 40.1898,
+      "max_lat": 41.0905,
+      "min_lon": 35.0251,
+      "max_lon": 36.4728
+    }
+  },
+  {
+    "plate": 6,
+    "plate_code": "06",
+    "name": "Ankara",
+    "region": "İç Anadolu",
+    "center": {
+      "latitude": 39.7153,
+      "longitude": 32.611
+    },
+    "bbox": {
+      "min_lat": 38.6365,
+      "max_lat": 40.7043,
+      "min_lon": 30.874,
+      "max_lon": 33.9468
+    }
+  },
+  {
+    "plate": 7,
+    "plate_code": "07",
+    "name": "Antalya",
+    "region": "Akdeniz",
+    "center": {
+      "latitude": 36.3832,
+      "longitude": 30.2422
+    },
+    "bbox": {
+      "min_lat": 36.0921,
+      "max_lat": 37.4244,
+      "min_lon": 29.2563,
+      "max_lon": 32.6581
+    }
+  },
+  {
+    "plate": 8,
+    "plate_code": "08",
+    "name": "Artvin",
+    "region": "Karadeniz",
+    "center": {
+      "latitude": 41.1662,
+      "longitude": 41.7766
+    },
+    "bbox": {
+      "min_lat": 40.5631,
+      "max_lat": 41.5263,
+      "min_lon": 41.1223,
+      "max_lon": 42.5832
+    }
+  },
+  {
+    "plate": 9,
+    "plate_code": "09",
+    "name": "Aydın",
+    "region": "Ege",
+    "center": {
+      "latitude": 37.6357,
+      "longitude": 27.5383
+    },
+    "bbox": {
+      "min_lat": 37.3218,
+      "max_lat": 38.1111,
+      "min_lon": 26.9999,
+      "max_lon": 28.8785
+    }
+  },
+  {
+    "plate": 10,
+    "plate_code": "10",
+    "name": "Balıkesir",
+    "region": "Marmara",
+    "center": {
+      "latitude": 39.8578,
+      "longitude": 27.3231
+    },
+    "bbox": {
+      "min_lat": 39.0427,
+      "max_lat": 40.6682,
+      "min_lon": 26.5249,
+      "max_lon": 28.9633
+    }
+  },
+  {
+    "plate": 11,
+    "plate_code": "11",
+    "name": "Bilecik",
+    "region": "Marmara",
+    "center": {
+      "latitude": 40.0913,
+      "longitude": 30.026
+    },
+    "bbox": {
+      "min_lat": 39.6822,
+      "max_lat": 40.5315,
+      "min_lon": 29.677,
+      "max_lon": 30.7267
+    }
+  },
+  {
+    "plate": 12,
+    "plate_code": "12",
+    "name": "Bingöl",
+    "region": "Doğu Anadolu",
+    "center": {
+      "latitude": 39.0762,
+      "longitude": 40.6015
+    },
+    "bbox": {
+      "min_lat": 38.4748,
+      "max_lat": 39.5656,
+      "min_lon": 40.0098,
+      "max_lon": 41.2745
+    }
+  },
+  {
+    "plate": 13,
+    "plate_code": "13",
+    "name": "Bitlis",
+    "region": "Doğu Anadolu",
+    "center": {
+      "latitude": 38.5631,
+      "longitude": 42.4356
+    },
+    "bbox": {
+      "min_lat": 38.0135,
+      "max_lat": 39.0955,
+      "min_lon": 41.5222,
+      "max_lon": 43.1979
+    }
+  },
+  {
+    "plate": 14,
+    "plate_code": "14",
+    "name": "Bolu",
+    "region": "Karadeniz",
+    "center": {
+      "latitude": 40.6006,
+      "longitude": 31.5017
+    },
+    "bbox": {
+      "min_lat": 40.1403,
+      "max_lat": 41.0427,
+      "min_lon": 30.5959,
+      "max_lon": 32.5401
+    }
+  },
+  {
+    "plate": 15,
+    "plate_code": "15",
+    "name": "Burdur",
+    "region": "Akdeniz",
+    "center": {
+      "latitude": 37.3513,
+      "longitude": 30.0478
+    },
+    "bbox": {
+      "min_lat": 36.919,
+      "max_lat": 37.8399,
+      "min_lon": 29.3878,
+      "max_lon": 30.9159
+    }
+  },
+  {
+    "plate": 16,
+    "plate_code": "16",
+    "name": "Bursa",
+    "region": "Marmara",
+    "center": {
+      "latitude": 40.2119,
+      "longitude": 29.085
+    },
+    "bbox": {
+      "min_lat": 39.5436,
+      "max_lat": 40.6134,
+      "min_lon": 28.1235,
+      "max_lon": 29.9415
+    }
+  },
+  {
+    "plate": 17,
+    "plate_code": "17",
+    "name": "Çanakkale",
+    "region": "Marmara",
+    "center": {
+      "latitude": 40.1252,
+      "longitude": 26.524
+    },
+    "bbox": {
+      "min_lat": 39.4529,
+      "max_lat": 40.8021,
+      "min_lon": 25.6651,
+      "max_lon": 27.5807
+    }
+  },
+  {
+    "plate": 18,
+    "plate_code": "18",
+    "name": "Çankırı",
+    "region": "İç Anadolu",
+    "center": {
+      "latitude": 40.7277,
+      "longitude": 33.4475
+    },
+    "bbox": {
+      "min_lat": 40.2608,
+      "max_lat": 41.0957,
+      "min_lon": 32.5014,
+      "max_lon": 34.1593
+    }
+  },
+  {
+    "plate": 19,
+    "plate_code": "19",
+    "name": "Çorum",
+    "region": "Karadeniz",
+    "center": {
+      "latitude": 40.6207,
+      "longitude": 34.69
+    },
+    "bbox": {
+      "min_lat": 39.9049,
+      "max_lat": 41.3065,
+      "min_lon": 33.9655,
+      "max_lon": 35.462
+    }
+  },
+  {
+    "plate": 20,
+    "plate_code": "20",
+    "name": "Denizli",
+    "region": "Ege",
+    "center": {
+      "latitude": 37.7248,
+      "longitude": 29.2736
+    },
+    "bbox": {
+      "min_lat": 36.8814,
+      "max_lat": 38.4541,
+      "min_lon": 28.5505,
+      "max_lon": 30.0417
+    }
+  },
+  {
+    "plate": 21,
+    "plate_code": "21",
+    "name": "Diyarbakır",
+    "region": "Güneydoğu Anadolu",
+    "center": {
+      "latitude": 38.1107,
+      "longitude": 40.3379
+    },
+    "bbox": {
+      "min_lat": 37.5563,
+      "max_lat": 38.7256,
+      "min_lon": 39.1117,
+      "max_lon": 41.4335
+    }
+  },
+  {
+    "plate": 22,
+    "plate_code": "22",
+    "name": "Edirne",
+    "region": "Marmara",
+    "center": {
+      "latitude": 41.1271,
+      "longitude": 26.5214
+    },
+    "bbox": {
+      "min_lat": 40.5904,
+      "max_lat": 42.0058,
+      "min_lon": 26.011,
+      "max_lon": 26.9999
+    }
+  },
+  {
+    "plate": 23,
+    "plate_code": "23",
+    "name": "Elazığ",
+    "region": "Doğu Anadolu",
+    "center": {
+      "latitude": 38.757,
+      "longitude": 39.5106
+    },
+    "bbox": {
+      "min_lat": 38.309,
+      "max_lat": 39.2267,
+      "min_lon": 38.3492,
+      "max_lon": 40.3978
+    }
+  },
+  {
+    "plate": 24,
+    "plate_code": "24",
+    "name": "Erzincan",
+    "region": "Doğu Anadolu",
+    "center": {
+      "latitude": 39.6088,
+      "longitude": 39.2719
+    },
+    "bbox": {
+      "min_lat": 39.0046,
+      "max_lat": 40.0698,
+      "min_lon": 38.3491,
+      "max_lon": 40.6915
+    }
+  },
+  {
+    "plate": 25,
+    "plate_code": "25",
+    "name": "Erzurum",
+    "region": "Doğu Anadolu",
+    "center": {
+      "latitude": 40.0799,
+      "longitude": 41.5418
+    },
+    "bbox": {
+      "min_lat": 39.1622,
+      "max_lat": 40.9829,
+      "min_lon": 40.2448,
+      "max_lon": 42.5679
+    }
+  },
+  {
+    "plate": 26,
+    "plate_code": "26",
+    "name": "Eskişehir",
+    "region": "İç Anadolu",
+    "center": {
+      "latitude": 39.5924,
+      "longitude": 30.9896
+    },
+    "bbox": {
+      "min_lat": 39.077,
+      "max_lat": 40.1719,
+      "min_lon": 30.0006,
+      "max_lon": 32.0114
+    }
+  },
+  {
+    "plate": 27,
+    "plate_code": "27",
+    "name": "Gaziantep",
+    "region": "Güneydoğu Anadolu",
+    "center": {
+      "latitude": 37.1353,
+      "longitude": 37.3845
+    },
+    "bbox": {
+      "min_lat": 36.6554,
+      "max_lat": 37.5456,
+      "min_lon": 36.4426,
+      "max_lon": 38.0515
+    }
+  },
+  {
+    "plate": 28,
+    "plate_code": "28",
+    "name": "Giresun",
+    "region": "Karadeniz",
+    "center": {
+      "latitude": 40.6859,
+      "longitude": 38.7126
+    },
+    "bbox": {
+      "min_lat": 40.0483,
+      "max_lat": 41.0793,
+      "min_lon": 38.0086,
+      "max_lon": 39.1787
+    }
+  },
+  {
+    "plate": 29,
+    "plate_code": "29",
+    "name": "Gümüşhane",
+    "region": "Karadeniz",
+    "center": {
+      "latitude": 40.3813,
+      "longitude": 39.508
+    },
+    "bbox": {
+      "min_lat": 39.8734,
+      "max_lat": 40.7755,
+      "min_lon": 38.8497,
+      "max_lon": 40.1081
+    }
+  },
+  {
+    "plate": 30,
+    "plate_code": "30",
+    "name": "Hakkari",
+    "region": "Doğu Anadolu",
+    "center": {
+      "latitude": 37.4111,
+      "longitude": 44.2847
+    },
+    "bbox": {
+      "min_lat": 36.9671,
+      "max_lat": 37.7689,
+      "min_lon": 43.4366,
+      "max_lon": 44.8338
+    }
+  },
+  {
+    "plate": 31,
+    "plate_code": "31",
+    "name": "Hatay",
+    "region": "Akdeniz",
+    "center": {
+      "latitude": 36.4596,
+      "longitude": 36.2412
+    },
+    "bbox": {
+      "min_lat": 35.8154,
+      "max_lat": 37.0256,
+      "min_lon": 35.7804,
+      "max_lon": 36.7048
+    }
+  },
+  {
+    "plate": 32,
+    "plate_code": "32",
+    "name": "Isparta",
+    "region": "Akdeniz",
+    "center": {
+      "latitude": 37.9004,
+      "longitude": 30.8361
+    },
+    "bbox": {
+      "min_lat": 37.3428,
+      "max_lat": 38.5166,
+      "min_lon": 30.0029,
+      "max_lon": 31.6168
+    }
+  },
+  {
+    "plate": 33,
+    "plate_code": "33",
+    "name": "Mersin",
+    "region": "Akdeniz",
+    "center": {
+      "latitude": 36.4915,
+      "longitude": 33.7944
+    },
+    "bbox": {
+      "min_lat": 36.0154,
+      "max_lat": 37.396,
+      "min_lon": 32.566,
+      "max_lon": 35.0698
+    }
+  },
+  {
+    "plate": 34,
+    "plate_code": "34",
+    "name": "İstanbul",
+    "region": "Marmara",
+    "center": {
+      "latitude": 41.0181,
+      "longitude": 28.9934
+    },
+    "bbox": {
+      "min_lat": 40.8176,
+      "max_lat": 41.546,
+      "min_lon": 28.0573,
+      "max_lon": 29.883
+    }
+  },
+  {
+    "plate": 35,
+    "plate_code": "35",
+    "name": "İzmir",
+    "region": "Ege",
+    "center": {
+      "latitude": 38.4914,
+      "longitude": 26.7861
+    },
+    "bbox": {
+      "min_lat": 37.8912,
+      "max_lat": 39.4215,
+      "min_lon": 26.2079,
+      "max_lon": 28.56
+    }
+  },
+  {
+    "plate": 36,
+    "plate_code": "36",
+    "name": "Kars",
+    "region": "Doğu Anadolu",
+    "center": {
+      "latitude": 40.5426,
+      "longitude": 43.1842
+    },
+    "bbox": {
+      "min_lat": 39.9177,
+      "max_lat": 41.2024,
+      "min_lon": 42.1381,
+      "max_lon": 43.7501
+    }
+  },
+  {
+    "plate": 37,
+    "plate_code": "37",
+    "name": "Kastamonu",
+    "region": "Karadeniz",
+    "center": {
+      "latitude": 41.3994,
+      "longitude": 33.7027
+    },
+    "bbox": {
+      "min_lat": 40.851,
+      "max_lat": 42.0204,
+      "min_lon": 32.681,
+      "max_lon": 34.5993
+    }
+  },
+  {
+    "plate": 38,
+    "plate_code": "38",
+    "name": "Kayseri",
+    "region": "İç Anadolu",
+    "center": {
+      "latitude": 38.6857,
+      "longitude": 35.7607
+    },
+    "bbox": {
+      "min_lat": 37.9196,
+      "max_lat": 39.2995,
+      "min_lon": 34.908,
+      "max_lon": 36.9449
+    }
+  },
+  {
+    "plate": 39,
+    "plate_code": "39",
+    "name": "Kırklareli",
+    "region": "Marmara",
+    "center": {
+      "latitude": 41.7692,
+      "longitude": 27.5171
+    },
+    "bbox": {
+      "min_lat": 41.2212,
+      "max_lat": 42.1054,
+      "min_lon": 26.8817,
+      "max_lon": 28.1496
+    }
+  },
+  {
+    "plate": 40,
+    "plate_code": "40",
+    "name": "Kırşehir",
+    "region": "İç Anadolu",
+    "center": {
+      "latitude": 39.2694,
+      "longitude": 34.2736
+    },
+    "bbox": {
+      "min_lat": 38.7937,
+      "max_lat": 39.8084,
+      "min_lon": 33.528,
+      "max_lon": 34.7546
+    }
+  },
+  {
+    "plate": 41,
+    "plate_code": "41",
+    "name": "Kocaeli",
+    "region": "Marmara",
+    "center": {
+      "latitude": 40.9055,
+      "longitude": 29.8467
+    },
+    "bbox": {
+      "min_lat": 40.5552,
+      "max_lat": 41.2176,
+      "min_lon": 29.2543,
+      "max_lon": 30.3774
+    }
+  },
+  {
+    "plate": 42,
+    "plate_code": "42",
+    "name": "Konya",
+    "region": "İç Anadolu",
+    "center": {
+      "latitude": 37.9489,
+      "longitude": 32.8219
+    },
+    "bbox": {
+      "min_lat": 36.7511,
+      "max_lat": 39.2768,
+      "min_lon": 31.2442,
+      "max_lon": 34.5141
+    }
+  },
+  {
+    "plate": 43,
+    "plate_code": "43",
+    "name": "Kütahya",
+    "region": "Ege",
+    "center": {
+      "latitude": 39.2956,
+      "longitude": 29.5226
+    },
+    "bbox": {
+      "min_lat": 38.7097,
+      "max_lat": 39.9246,
+      "min_lon": 28.6614,
+      "max_lon": 30.4533
+    }
+  },
+  {
+    "plate": 44,
+    "plate_code": "44",
+    "name": "Malatya",
+    "region": "Doğu Anadolu",
+    "center": {
+      "latitude": 38.4995,
+      "longitude": 38.201
+    },
+    "bbox": {
+      "min_lat": 37.8087,
+      "max_lat": 39.1385,
+      "min_lon": 37.1949,
+      "max_lon": 39.1422
+    }
+  },
+  {
+    "plate": 45,
+    "plate_code": "45",
+    "name": "Manisa",
+    "region": "Ege",
+    "center": {
+      "latitude": 38.8015,
+      "longitude": 28.103
+    },
+    "bbox": {
+      "min_lat": 38.0993,
+      "max_lat": 39.4138,
+      "min_lon": 27.1245,
+      "max_lon": 29.0365
+    }
+  },
+  {
+    "plate": 46,
+    "plate_code": "46",
+    "name": "Kahramanmaraş",
+    "region": "Akdeniz",
+    "center": {
+      "latitude": 37.8742,
+      "longitude": 36.9833
+    },
+    "bbox": {
+      "min_lat": 37.2174,
+      "max_lat": 38.6285,
+      "min_lon": 36.2128,
+      "max_lon": 37.7738
+    }
+  },
+  {
+    "plate": 47,
+    "plate_code": "47",
+    "name": "Mardin",
+    "region": "Güneydoğu Anadolu",
+    "center": {
+      "latitude": 37.4226,
+      "longitude": 41.0356
+    },
+    "bbox": {
+      "min_lat": 36.9161,
+      "max_lat": 37.7877,
+      "min_lon": 39.8814,
+      "max_lon": 41.9573
+    }
+  },
+  {
+    "plate": 48,
+    "plate_code": "48",
+    "name": "Muğla",
+    "region": "Ege",
+    "center": {
+      "latitude": 36.8573,
+      "longitude": 28.0879
+    },
+    "bbox": {
+      "min_lat": 36.301,
+      "max_lat": 37.5869,
+      "min_lon": 27.1804,
+      "max_lon": 29.6769
+    }
+  },
+  {
+    "plate": 49,
+    "plate_code": "49",
+    "name": "Muş",
+    "region": "Doğu Anadolu",
+    "center": {
+      "latitude": 39.019,
+      "longitude": 41.8796
+    },
+    "bbox": {
+      "min_lat": 38.5257,
+      "max_lat": 39.4861,
+      "min_lon": 41.1565,
+      "max_lon": 42.769
+    }
+  },
+  {
+    "plate": 50,
+    "plate_code": "50",
+    "name": "Nevşehir",
+    "region": "İç Anadolu",
+    "center": {
+      "latitude": 38.935,
+      "longitude": 34.6809
+    },
+    "bbox": {
+      "min_lat": 38.3521,
+      "max_lat": 39.4866,
+      "min_lon": 34.2065,
+      "max_lon": 35.0701
+    }
+  },
+  {
+    "plate": 51,
+    "plate_code": "51",
+    "name": "Niğde",
+    "region": "İç Anadolu",
+    "center": {
+      "latitude": 37.9474,
+      "longitude": 34.7244
+    },
+    "bbox": {
+      "min_lat": 37.3493,
+      "max_lat": 38.4389,
+      "min_lon": 34.1257,
+      "max_lon": 35.3122
+    }
+  },
+  {
+    "plate": 52,
+    "plate_code": "52",
+    "name": "Ordu",
+    "region": "Karadeniz",
+    "center": {
+      "latitude": 40.8316,
+      "longitude": 37.451
+    },
+    "bbox": {
+      "min_lat": 40.3297,
+      "max_lat": 41.1482,
+      "min_lon": 36.6888,
+      "max_lon": 38.1557
+    }
+  },
+  {
+    "plate": 53,
+    "plate_code": "53",
+    "name": "Rize",
+    "region": "Karadeniz",
+    "center": {
+      "latitude": 41.0114,
+      "longitude": 40.9139
+    },
+    "bbox": {
+      "min_lat": 40.5353,
+      "max_lat": 41.295,
+      "min_lon": 40.3349,
+      "max_lon": 41.424
+    }
+  },
+  {
+    "plate": 54,
+    "plate_code": "54",
+    "name": "Sakarya",
+    "region": "Marmara",
+    "center": {
+      "latitude": 40.8052,
+      "longitude": 30.5244
+    },
+    "bbox": {
+      "min_lat": 40.3352,
+      "max_lat": 41.1793,
+      "min_lon": 29.9249,
+      "max_lon": 31.0363
+    }
+  },
+  {
+    "plate": 55,
+    "plate_code": "55",
+    "name": "Samsun",
+    "region": "Karadeniz",
+    "center": {
+      "latitude": 41.2222,
+      "longitude": 36.2823
+    },
+    "bbox": {
+      "min_lat": 40.843,
+      "max_lat": 41.7353,
+      "min_lon": 34.8921,
+      "max_lon": 37.1525
+    }
+  },
+  {
+    "plate": 56,
+    "plate_code": "56",
+    "name": "Siirt",
+    "region": "Güneydoğu Anadolu",
+    "center": {
+      "latitude": 37.951,
+      "longitude": 42.1559
+    },
+    "bbox": {
+      "min_lat": 37.6818,
+      "max_lat": 38.2169,
+      "min_lon": 41.4113,
+      "max_lon": 43.0391
+    }
+  },
+  {
+    "plate": 57,
+    "plate_code": "57",
+    "name": "Sinop",
+    "region": "Karadeniz",
+    "center": {
+      "latitude": 41.749,
+      "longitude": 34.9239
+    },
+    "bbox": {
+      "min_lat": 41.1958,
+      "max_lat": 42.0979,
+      "min_lon": 34.2256,
+      "max_lon": 35.4989
+    }
+  },
+  {
+    "plate": 58,
+    "plate_code": "58",
+    "name": "Sivas",
+    "region": "İç Anadolu",
+    "center": {
+      "latitude": 39.6735,
+      "longitude": 37.3419
+    },
+    "bbox": {
+      "min_lat": 38.5782,
+      "max_lat": 40.5087,
+      "min_lon": 35.8126,
+      "max_lon": 38.7737
+    }
+  },
+  {
+    "plate": 59,
+    "plate_code": "59",
+    "name": "Tekirdağ",
+    "region": "Marmara",
+    "center": {
+      "latitude": 41.1229,
+      "longitude": 27.4632
+    },
+    "bbox": {
+      "min_lat": 40.5907,
+      "max_lat": 41.5805,
+      "min_lon": 26.7308,
+      "max_lon": 28.2317
+    }
+  },
+  {
+    "plate": 60,
+    "plate_code": "60",
+    "name": "Tokat",
+    "region": "Karadeniz",
+    "center": {
+      "latitude": 40.4143,
+      "longitude": 36.6516
+    },
+    "bbox": {
+      "min_lat": 39.9459,
+      "max_lat": 40.8994,
+      "min_lon": 35.5121,
+      "max_lon": 37.6479
+    }
+  },
+  {
+    "plate": 61,
+    "plate_code": "61",
+    "name": "Trabzon",
+    "region": "Karadeniz",
+    "center": {
+      "latitude": 40.791,
+      "longitude": 39.8785
+    },
+    "bbox": {
+      "min_lat": 40.5008,
+      "max_lat": 41.1076,
+      "min_lon": 39.118,
+      "max_lon": 40.5119
+    }
+  },
+  {
+    "plate": 62,
+    "plate_code": "62",
+    "name": "Tunceli",
+    "region": "Doğu Anadolu",
+    "center": {
+      "latitude": 39.2453,
+      "longitude": 39.6223
+    },
+    "bbox": {
+      "min_lat": 38.7492,
+      "max_lat": 39.5566,
+      "min_lon": 38.7269,
+      "max_lon": 40.5432
+    }
+  },
+  {
+    "plate": 63,
+    "plate_code": "63",
+    "name": "Şanlıurfa",
+    "region": "Güneydoğu Anadolu",
+    "center": {
+      "latitude": 37.3807,
+      "longitude": 38.9296
+    },
+    "bbox": {
+      "min_lat": 36.665,
+      "max_lat": 38.0307,
+      "min_lon": 37.8304,
+      "max_lon": 40.2552
+    }
+  },
+  {
+    "plate": 64,
+    "plate_code": "64",
+    "name": "Uşak",
+    "region": "Ege",
+    "center": {
+      "latitude": 38.5172,
+      "longitude": 29.3929
+    },
+    "bbox": {
+      "min_lat": 38.1918,
+      "max_lat": 38.89,
+      "min_lon": 28.8254,
+      "max_lon": 29.8944
+    }
+  },
+  {
+    "plate": 65,
+    "plate_code": "65",
+    "name": "Van",
+    "region": "Doğu Anadolu",
+    "center": {
+      "latitude": 38.4924,
+      "longitude": 43.8001
+    },
+    "bbox": {
+      "min_lat": 37.6278,
+      "max_lat": 39.4018,
+      "min_lon": 42.6879,
+      "max_lon": 44.5746
+    }
+  },
+  {
+    "plate": 66,
+    "plate_code": "66",
+    "name": "Yozgat",
+    "region": "İç Anadolu",
+    "center": {
+      "latitude": 39.6841,
+      "longitude": 35.2347
+    },
+    "bbox": {
+      "min_lat": 39.0057,
+      "max_lat": 40.2289,
+      "min_lon": 34.0543,
+      "max_lon": 36.1567
+    }
+  },
+  {
+    "plate": 67,
+    "plate_code": "67",
+    "name": "Zonguldak",
+    "region": "Karadeniz",
+    "center": {
+      "latitude": 41.3074,
+      "longitude": 31.79
+    },
+    "bbox": {
+      "min_lat": 41.0184,
+      "max_lat": 41.5629,
+      "min_lon": 31.3382,
+      "max_lon": 32.354
+    }
+  },
+  {
+    "plate": 68,
+    "plate_code": "68",
+    "name": "Aksaray",
+    "region": "İç Anadolu",
+    "center": {
+      "latitude": 38.4456,
+      "longitude": 33.9386
+    },
+    "bbox": {
+      "min_lat": 37.9326,
+      "max_lat": 39.0081,
+      "min_lon": 33.2401,
+      "max_lon": 34.3945
+    }
+  },
+  {
+    "plate": 69,
+    "plate_code": "69",
+    "name": "Bayburt",
+    "region": "Karadeniz",
+    "center": {
+      "latitude": 40.2381,
+      "longitude": 40.2032
+    },
+    "bbox": {
+      "min_lat": 39.9311,
+      "max_lat": 40.5353,
+      "min_lon": 39.6906,
+      "max_lon": 40.7977
+    }
+  },
+  {
+    "plate": 70,
+    "plate_code": "70",
+    "name": "Karaman",
+    "region": "İç Anadolu",
+    "center": {
+      "latitude": 37.0587,
+      "longitude": 33.1823
+    },
+    "bbox": {
+      "min_lat": 36.4312,
+      "max_lat": 37.6081,
+      "min_lon": 32.4565,
+      "max_lon": 34.1976
+    }
+  },
+  {
+    "plate": 71,
+    "plate_code": "71",
+    "name": "Kırıkkale",
+    "region": "İç Anadolu",
+    "center": {
+      "latitude": 39.7338,
+      "longitude": 33.6615
+    },
+    "bbox": {
+      "min_lat": 39.1611,
+      "max_lat": 40.2848,
+      "min_lon": 33.2333,
+      "max_lon": 34.1986
+    }
+  },
+  {
+    "plate": 72,
+    "plate_code": "72",
+    "name": "Batman",
+    "region": "Güneydoğu Anadolu",
+    "center": {
+      "latitude": 38.0494,
+      "longitude": 41.4459
+    },
+    "bbox": {
+      "min_lat": 37.5544,
+      "max_lat": 38.5424,
+      "min_lon": 41.0331,
+      "max_lon": 41.8739
+    }
+  },
+  {
+    "plate": 73,
+    "plate_code": "73",
+    "name": "Şırnak",
+    "region": "Güneydoğu Anadolu",
+    "center": {
+      "latitude": 37.4501,
+      "longitude": 42.5516
+    },
+    "bbox": {
+      "min_lat": 37.1093,
+      "max_lat": 37.8778,
+      "min_lon": 41.739,
+      "max_lon": 43.501
+    }
+  },
+  {
+    "plate": 74,
+    "plate_code": "74",
+    "name": "Bartın",
+    "region": "Karadeniz",
+    "center": {
+      "latitude": 41.628,
+      "longitude": 32.4356
+    },
+    "bbox": {
+      "min_lat": 41.2385,
+      "max_lat": 41.8344,
+      "min_lon": 32.0255,
+      "max_lon": 32.9256
+    }
+  },
+  {
+    "plate": 75,
+    "plate_code": "75",
+    "name": "Ardahan",
+    "region": "Doğu Anadolu",
+    "center": {
+      "latitude": 41.2218,
+      "longitude": 42.8169
+    },
+    "bbox": {
+      "min_lat": 40.6401,
+      "max_lat": 41.598,
+      "min_lon": 42.3308,
+      "max_lon": 43.2822
+    }
+  },
+  {
+    "plate": 76,
+    "plate_code": "76",
+    "name": "Iğdır",
+    "region": "Doğu Anadolu",
+    "center": {
+      "latitude": 39.9308,
+      "longitude": 43.961
+    },
+    "bbox": {
+      "min_lat": 39.6252,
+      "max_lat": 40.2187,
+      "min_lon": 43.2931,
+      "max_lon": 44.8202
+    }
+  },
+  {
+    "plate": 77,
+    "plate_code": "77",
+    "name": "Yalova",
+    "region": "Marmara",
+    "center": {
+      "latitude": 40.5732,
+      "longitude": 29.1101
+    },
+    "bbox": {
+      "min_lat": 40.4557,
+      "max_lat": 40.7021,
+      "min_lon": 28.7801,
+      "max_lon": 29.4426
+    }
+  },
+  {
+    "plate": 78,
+    "plate_code": "78",
+    "name": "Karabük",
+    "region": "Karadeniz",
+    "center": {
+      "latitude": 41.2411,
+      "longitude": 32.6768
+    },
+    "bbox": {
+      "min_lat": 40.8392,
+      "max_lat": 41.554,
+      "min_lon": 32.092,
+      "max_lon": 33.0771
+    }
+  },
+  {
+    "plate": 79,
+    "plate_code": "79",
+    "name": "Kilis",
+    "region": "Güneydoğu Anadolu",
+    "center": {
+      "latitude": 36.8008,
+      "longitude": 37.1098
+    },
+    "bbox": {
+      "min_lat": 36.6236,
+      "max_lat": 37.0105,
+      "min_lon": 36.7819,
+      "max_lon": 37.5085
+    }
+  },
+  {
+    "plate": 80,
+    "plate_code": "80",
+    "name": "Osmaniye",
+    "region": "Akdeniz",
+    "center": {
+      "latitude": 37.2698,
+      "longitude": 36.2225
+    },
+    "bbox": {
+      "min_lat": 36.9533,
+      "max_lat": 37.6512,
+      "min_lon": 35.8528,
+      "max_lon": 36.7286
+    }
+  },
+  {
+    "plate": 81,
+    "plate_code": "81",
+    "name": "Düzce",
+    "region": "Karadeniz",
+    "center": {
+      "latitude": 40.8871,
+      "longitude": 31.2959
+    },
+    "bbox": {
+      "min_lat": 40.6468,
+      "max_lat": 41.1358,
+      "min_lon": 30.8731,
+      "max_lon": 31.7579
+    }
+  }
+]
