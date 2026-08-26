@@ -38,11 +38,9 @@ async def main():
 
             # 4. Test Compound Query: Istanbul Airspace + Speed >= 750 km/h
             print("\n" + "=" * 60)
-            print("3️⃣ [MCP TEST] COMPOUND: query_kafka_stream(latitude=41.0082, longitude=28.9784, radius_km=250, min_speed_kmh=750, limit=2)...")
+            print("3️⃣ [MCP TEST] COMPOUND: query_kafka_stream(region='Istanbul', min_speed_kmh=750, limit=2)...")
             res_compound = await session.call_tool("query_kafka_stream", {
-                "latitude": 41.0082,
-                "longitude": 28.9784,
-                "radius_km": 250.0,
+                "region": "Istanbul",
                 "min_speed_kmh": 750.0,
                 "limit": 2
             })

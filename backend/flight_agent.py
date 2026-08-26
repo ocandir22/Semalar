@@ -3,6 +3,7 @@ import sys
 import json
 import re
 import asyncio
+import time
 from typing import Dict, Any, List, Optional
 from dotenv import load_dotenv
 
@@ -328,11 +329,97 @@ async def call_gemini_with_retry(genai_client, model: str, contents: list, confi
 
 
 # ============================================================
+# Terminal Observability & LLM Activity Visualizer
+# ============================================================
+
+_ANSI_CYAN = "\033[96m"
+_ANSI_GREEN = "\033[92m"
+_ANSI_YELLOW = "\033[93m"
+_ANSI_MAGENTA = "\033[95m"
+_ANSI_BLUE = "\033[94m"
+_ANSI_GRAY = "\033[90m"
+_ANSI_BOLD = "\033[1m"
+_ANSI_RESET = "\033[0m"
+
+
+def _print_agent_banner(user_query: str, project_mode: str, provider: str, model: str):
+    mode_desc = (
+        "⚡ Apache Kafka Telemetri Akışı (Proje #2)" if project_mode == "kafka"
+        else ("🔴 FlightRadar24 Canlı Radar (Proje #1)" if project_mode == "live"
+        else "🤖 Otomatik Tespit")
+    )
+    print(f"\n{_ANSI_CYAN}{'═' * 70}{_ANSI_RESET}")
+    print(f"{_ANSI_BOLD}{_ANSI_CYAN}🤖 [LLM AGENT] Yeni Kullanıcı Talebi Alındı{_ANSI_RESET}")
+    print(f"  {_ANSI_BOLD}💬 Soru        :{_ANSI_RESET} \"{user_query}\"")
+    print(f"  {_ANSI_BOLD}🎯 Proje Modu  :{_ANSI_RESET} {_ANSI_MAGENTA}{mode_desc}{_ANSI_RESET}")
+    print(f"  {_ANSI_BOLD}🧠 Model/Sağlayıcı:{_ANSI_RESET} {provider.upper()} ({model})")
+    print(f"{_ANSI_CYAN}{'─' * 70}{_ANSI_RESET}")
+
+
+def _print_tool_decision(tool_name: str, tool_args: dict):
+    print(f"  {_ANSI_YELLOW}⚙️  [LLM Tool Çağrı Kararı]:{_ANSI_RESET}")
+    print(f"     {_ANSI_BOLD}Araç        :{_ANSI_RESET} {_ANSI_YELLOW}{tool_name}{_ANSI_RESET}")
+    args_str = json.dumps(tool_args, ensure_ascii=False)
+    print(f"     {_ANSI_BOLD}Parametreler:{_ANSI_RESET} {args_str}")
+
+
+def _print_tool_result(tool_name: str, result: dict, elapsed_ms: float):
+    status = result.get("status", "success")
+    print(f"  {_ANSI_GREEN}⚡ [MCP Tool Sonucu — {elapsed_ms:.1f}ms]:{_ANSI_RESET}")
+    print(f"     {_ANSI_BOLD}Durum       :{_ANSI_RESET} {status}")
+    if "flights" in result:
+        flights = result.get("flights", [])
+        total = result.get("total_matches", len(flights))
+        prov_details = result.get("province_details")
+        region = result.get("applied_region") or ""
+        extra = ""
+        if prov_details:
+            extra = f" | İl: {prov_details.get('name')} (Plaka: {prov_details.get('plate_code', prov_details.get('plate'))})"
+        elif region:
+            extra = f" | Bölge: {region}"
+        print(f"     {_ANSI_BOLD}Eşleşme     :{_ANSI_RESET} {_ANSI_GREEN}{len(flights)} uçak listelendi{_ANSI_RESET} (Toplam: {total}{extra})")
+        for idx, f in enumerate(flights[:3], 1):
+            t = f.get("telemetry", {})
+            callsign = f.get("flight_number") or f.get("callsign") or "N/A"
+            model = f.get("aircraft_model") or "?"
+            spd = t.get("ground_speed_kmh", 0)
+            alt = t.get("altitude_feet", 0)
+            route_raw = f.get("route", "")
+            route = route_raw.get("display") if isinstance(route_raw, dict) else str(route_raw or "")
+            route_str = f" | Rota: {route}" if route and route not in ["? ➔ ?", "N/A"] else ""
+            print(f"       {idx}. {callsign} ({model}) ➔ Hız: {spd} km/s | İrtifa: {alt} ft{route_str}")
+        if len(flights) > 3:
+            print(f"       ... ve {len(flights) - 3} uçak daha.")
+    elif "total_flights_in_kafka" in result:
+        print(f"     {_ANSI_BOLD}İstatistik  :{_ANSI_RESET} {result.get('total_flights_in_kafka')} uçak Kafka belleğinde, Maks Hız: {result.get('speed_kmh', {}).get('max')} km/s")
+    elif "returned_flights" in result:
+        flights = result.get("returned_flights", [])
+        region_str = result.get("applied_province") or result.get("applied_region", "Hava Sahası")
+        print(f"     {_ANSI_BOLD}Radar       :{_ANSI_RESET} {_ANSI_GREEN}{len(flights)} uçak tespit edildi ({region_str}){_ANSI_RESET}")
+        for idx, f in enumerate(flights[:3], 1):
+            print(f"       {idx}. {f.get('flight_number') or f.get('callsign')} ({f.get('aircraft_model')}) ➔ {f.get('ground_speed_kmh', 0)} km/s | {f.get('altitude_feet', 0)} ft")
+    elif "flight" in result:
+        f = result.get("flight", {})
+        route_raw = f.get("route", "")
+        route = route_raw.get("display") if isinstance(route_raw, dict) else str(route_raw or "")
+        print(f"     {_ANSI_BOLD}Uçak Bilgisi:{_ANSI_RESET} {f.get('flight_number') or f.get('callsign')} ({f.get('aircraft_model')}) - Rota: {route}")
+
+
+def _print_agent_final_response(answer: str, total_elapsed_s: float):
+    print(f"{_ANSI_CYAN}{'─' * 70}{_ANSI_RESET}")
+    print(f"  {_ANSI_BOLD}📝 [LLM Final Yanıtı — Toplam Süre: {total_elapsed_s:.2f}s]:{_ANSI_RESET}")
+    for line in answer.strip().splitlines():
+        print(f"     {line}")
+    print(f"{_ANSI_CYAN}{'═' * 70}{_ANSI_RESET}\n")
+
+
+# ============================================================
 # Main AI Processing Function (Remote HTTP MCP Execution)
 # ============================================================
 
 async def ask_flight_agent(user_query: str, project_mode: str = "auto", mcp_url: Optional[str] = None) -> Dict[str, Any]:
     """Processes a natural language query using the configured LLM and direct MCP tools."""
+    t_start = time.perf_counter()
     provider = LLM_PROVIDER
     tool_calls_executed = []
 
@@ -354,6 +441,8 @@ async def ask_flight_agent(user_query: str, project_mode: str = "auto", mcp_url:
             active_tools_defs = LOCAL_MCP_DEFINITIONS
             active_instruction = SYSTEM_INSTRUCTION
 
+    # Terminal Log: Request Banner
+    _print_agent_banner(user_query, mode, provider, get_agent_info()["model"])
 
     # ============================================================
     # Provider: Gemini
@@ -391,6 +480,7 @@ async def ask_flight_agent(user_query: str, project_mode: str = "auto", mcp_url:
         try:
             response, active_model = await call_gemini_with_retry(genai_client, GEMINI_MODEL, contents, config)
         except Exception as e:
+            print(f"  \033[91m❌ [LLM Hatası]: Gemini API Error: {e}\033[0m")
             return {
                 "status": "error",
                 "answer": f"Gemini API Error: {e}",
@@ -408,8 +498,16 @@ async def ask_flight_agent(user_query: str, project_mode: str = "auto", mcp_url:
                 tool_name = function_call.name
                 tool_args = function_call.args or {}
 
+                # Print tool decision to terminal
+                _print_tool_decision(tool_name, tool_args)
+
                 # Execute tool remotely via HTTP RPC against MCP Server node
+                t_tool_start = time.perf_counter()
                 parsed_json = await execute_mcp_tool(tool_name, tool_args, mcp_url=mcp_url)
+                t_tool_elapsed = (time.perf_counter() - t_tool_start) * 1000
+
+                # Print tool result to terminal
+                _print_tool_result(tool_name, parsed_json, t_tool_elapsed)
 
                 tool_calls_executed.append({
                     "name": tool_name,
@@ -434,14 +532,20 @@ async def ask_flight_agent(user_query: str, project_mode: str = "auto", mcp_url:
                     types.GenerateContentConfig(tools=gemini_tools, temperature=0.0, system_instruction=active_instruction)
                 )
                 answer = extract_text_from_response(final_response)
+                cleaned_answer = clean_model_output(answer)
+
+                # Print final response to terminal
+                _print_agent_final_response(cleaned_answer, time.perf_counter() - t_start)
+
                 return {
                     "status": "success",
-                    "answer": clean_model_output(answer),
+                    "answer": cleaned_answer,
                     "tool_calls": tool_calls_executed,
                     "model": active_model,
                     "provider": provider
                 }
             except Exception as e:
+                print(f"  \033[91m❌ [LLM Hatası]: Gemini Response Error: {e}\033[0m")
                 return {
                     "status": "error",
                     "answer": f"Gemini Response Error: {e}",
@@ -451,10 +555,16 @@ async def ask_flight_agent(user_query: str, project_mode: str = "auto", mcp_url:
                     "error": str(e)
                 }
         else:
+            print(f"  {_ANSI_GRAY}ℹ️  [LLM Kararı]: Doğrudan Yanıt (Tool çağrısı gerekmedi){_ANSI_RESET}")
             answer = extract_text_from_response(response)
+            cleaned_answer = clean_model_output(answer)
+
+            # Print final response to terminal
+            _print_agent_final_response(cleaned_answer, time.perf_counter() - t_start)
+
             return {
                 "status": "success",
-                "answer": clean_model_output(answer),
+                "answer": cleaned_answer,
                 "tool_calls": [],
                 "model": active_model,
                 "provider": provider
@@ -540,7 +650,16 @@ async def ask_flight_agent(user_query: str, project_mode: str = "auto", mcp_url:
                 except Exception:
                     func_args = {}
 
+                # Print tool decision to terminal
+                _print_tool_decision(func_name, func_args)
+
+                t_tool_start = time.perf_counter()
                 parsed_json = await execute_mcp_tool(func_name, func_args, mcp_url=mcp_url)
+                t_tool_elapsed = (time.perf_counter() - t_tool_start) * 1000
+
+                # Print tool result to terminal
+                _print_tool_result(func_name, parsed_json, t_tool_elapsed)
+
                 result_text = json.dumps(parsed_json, ensure_ascii=False)
 
                 tool_calls_executed.append({
@@ -562,14 +681,20 @@ async def ask_flight_agent(user_query: str, project_mode: str = "auto", mcp_url:
                     temperature=0.0
                 )
                 answer = final_completion.choices[0].message.content or "(No response received)"
+                cleaned_answer = clean_model_output(answer)
+
+                # Print final response to terminal
+                _print_agent_final_response(cleaned_answer, time.perf_counter() - t_start)
+
                 return {
                     "status": "success",
-                    "answer": clean_model_output(answer),
+                    "answer": cleaned_answer,
                     "tool_calls": tool_calls_executed,
                     "model": model_name,
                     "provider": provider
                 }
             except Exception as e:
+                print(f"  \033[91m❌ [LLM Hatası]: {provider.upper()} Response Error: {e}\033[0m")
                 return {
                     "status": "error",
                     "answer": f"{provider.upper()} Response Error: {e}",
@@ -579,10 +704,16 @@ async def ask_flight_agent(user_query: str, project_mode: str = "auto", mcp_url:
                     "error": str(e)
                 }
         else:
+            print(f"  {_ANSI_GRAY}ℹ️  [LLM Kararı]: Doğrudan Yanıt (Tool çağrısı gerekmedi){_ANSI_RESET}")
             answer = response_message.content or "(No response received)"
+            cleaned_answer = clean_model_output(answer)
+
+            # Print final response to terminal
+            _print_agent_final_response(cleaned_answer, time.perf_counter() - t_start)
+
             return {
                 "status": "success",
-                "answer": clean_model_output(answer),
+                "answer": cleaned_answer,
                 "tool_calls": [],
                 "model": model_name,
                 "provider": provider

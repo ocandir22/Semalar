@@ -84,6 +84,12 @@ def log_mcp_to_kafka(tool_name: str, args: dict, result: Any, elapsed_ms: float)
         _recent_audit_logs.appendleft(payload)
         if _audit_producer:
             _audit_producer.send("mcp-requests", key=tool_name, value=payload)
+
+        # Print clean 1-line MCP execution log to terminal
+        active_args = {k: v for k, v in args.items() if v not in [None, "", False] and not k.startswith("_")}
+        args_repr = ", ".join(f"{k}={repr(v)}" for k, v in active_args.items()) if active_args else "no args"
+        records_info = f" | {matched_count} records" if matched_count is not None else ""
+        print(f"📡 \033[94m[MCP SERVER]\033[0m \033[1m{tool_name}\033[0m({args_repr}) ➔ \033[92m{status}\033[0m ({elapsed_ms:.1f}ms{records_info})")
     except Exception:
         pass
 
