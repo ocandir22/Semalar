@@ -78,15 +78,17 @@ Semalar/
 │   │   └── data/              # tr-cities.json & tr-provinces-catalog.json
 │   ├── project_live/          # 1. Project: Live FlightRadar24 Radar & Airspace
 │   │   ├── flight_service.py  # Direct live FlightRadar24 API service
-│   │   └── live_agent.py      # Isolated Live Radar AI Agent & MCP tools
+│   │   ├── live_agent.py      # Isolated Live Radar AI Agent & MCP tools
+│   │   ├── live_cli.py        # Dedicated Live Radar terminal CLI
+│   │   └── live_server.py     # Standalone Live Radar ASGI & FastMCP Server (Port 8000)
 │   ├── project_kafka/         # 2. Project: Apache Kafka Telemetry Cockpit
 │   │   ├── flight_collector.py# FlightRadar24 live scraper & normalizer
 │   │   ├── flight_producer.py # Real-time streaming Kafka producer daemon (15s cycle)
 │   │   ├── flight_kafka_store.py # In-memory Kafka stream consumer, indexer & polygon filter
-│   │   └── kafka_agent.py     # Isolated Kafka Telemetry AI Agent & MCP tool
-│   ├── server.py              # Central Starlette ASGI & FastMCP Server (Port 8000)
-│   ├── flight_agent.py        # Backward-compatible agent routing bridge
-│   ├── flight_cli.py          # Interactive terminal aviation AI client
+│   │   ├── kafka_agent.py     # Isolated Kafka Telemetry AI Agent & MCP tool
+│   │   ├── kafka_cli.py       # Dedicated Kafka Cockpit terminal CLI
+│   │   └── kafka_server.py    # Standalone Kafka Cockpit ASGI & FastMCP Server (Port 8001)
+│   ├── server.py              # Central Starlette ASGI & FastMCP Server (Port 8000, mounts both)
 │   └── test_flight_mcp.py     # Automated MCP protocol verification script
 ├── frontend/
 │   ├── index.html             # 1. Project: Live Flight Radar & AI Assistant

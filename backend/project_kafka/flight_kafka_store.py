@@ -172,7 +172,7 @@ class FlightKafkaStore:
         Evaluates all provided constraints (speed, region/province, airline, query, stats) simultaneously in a single pass.
         """
         # If statistics requested, return stream summary
-        if get_stats:
+        if get_stats and str(get_stats).lower() in ["true", "1", "yes"]:
             return self.get_telemetry_stats()
 
         clean_q = query.strip().upper() if query and str(query).strip() else None

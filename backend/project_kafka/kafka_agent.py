@@ -40,7 +40,7 @@ KAFKA_MCP_DEFINITIONS: List[Dict[str, Any]] = [
                 "airline": {"type": "string", "description": "Airline code. Map colloquial airline names (e.g. 'Türk Hava Yolları' -> 'THY', 'Pegasus' -> 'PGT', 'AJet' -> 'TKJ' or 'VF', 'Lufthansa' -> 'DLH', 'SunExpress' -> 'SXS')."},
                 "min_speed_kmh": {"type": "number", "description": "Minimum ground speed filter in km/h. Map expressions like 'hızlı uçaklar', 'ses hızına yakın', 'süpersonik' to appropriate values (e.g. 800 or 900)."},
                 "min_altitude_feet": {"type": "number", "description": "Minimum altitude filter in feet. Convert user metric requests like '10 bin metre üzeri' (~32,800 ft) to feet."},
-                "get_stats": {"type": "boolean", "description": "Set to true to retrieve overall Kafka stream statistics (max/avg speed, altitude, airline count)"},
+                "get_stats": {"type": "string", "description": "Pass 'true' to retrieve overall Kafka stream statistics (max/avg speed, altitude, airline count)"},
                 "limit": {"type": "integer", "description": "Maximum number of flights to return (default: 15)"}
             }
         }
