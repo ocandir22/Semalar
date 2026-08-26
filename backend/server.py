@@ -20,6 +20,7 @@ import time
 import collections
 import logging
 from datetime import datetime, timezone
+import threading
 from kafka import KafkaProducer
 
 # Silence noisy kafka connection logs
@@ -145,17 +146,36 @@ def search_airline_flights(airline_code: str, limit: int = 15) -> Dict[str, Any]
 
 @mcp_server.tool()
 @audit_tool("get_flights_over_region")
-def get_flights_over_region(latitude: float, longitude: float, radius_km: float = 100.0, limit: int = 15) -> Dict[str, Any]:
-    """Finds live flights flying within a given radius (km) around a specific geographic coordinate (latitude, longitude).
-    For example: Istanbul (41.0082, 28.9784), Ankara (39.9334, 32.8597), London (51.5074, -0.1278), New York (40.7128, -74.0060).
+def get_flights_over_region(
+    latitude: Optional[float] = None,
+    longitude: Optional[float] = None,
+    radius_km: float = 100.0,
+    country: str = "",
+    region: str = "",
+    min_speed_kmh: Optional[float] = None,
+    limit: int = 15
+) -> Dict[str, Any]:
+    """Finds live flights flying within a given radius (km) around coordinates, or within official national/regional airspace borders (e.g. 'TR' / 'Turkey', 'Ankara', 'Istanbul').
+    Supports combined speed filtering directly from FlightRadar24 live radar.
     
     Args:
-        latitude: Latitude in decimal degrees (e.g. 41.0082 for Istanbul)
-        longitude: Longitude in decimal degrees (e.g. 28.9784 for Istanbul)
-        radius_km: Search radius in kilometers (default: 100 km)
-        limit: Maximum number of flights to return (default: 15)
+        latitude: Latitude in decimal degrees (e.g. 41.0082 for Istanbul).
+        longitude: Longitude in decimal degrees (e.g. 28.9784 for Istanbul).
+        radius_km: Search radius in kilometers (default: 100 km).
+        country: Official country code or name to restrict airspace within exact borders (e.g. 'TR' or 'Turkey').
+        region: Geographic region or major city (e.g. 'Turkey', 'Ankara', 'Istanbul', 'Marmara', 'Aegean', 'Black Sea').
+        min_speed_kmh: Minimum ground speed filter in km/h (optional, e.g. 800 for high-speed flights).
+        limit: Maximum number of flights to return (default: 15).
     """
-    return fetch_flights_over_region(latitude=latitude, longitude=longitude, radius_km=radius_km, limit=limit)
+    return fetch_flights_over_region(
+        latitude=latitude,
+        longitude=longitude,
+        radius_km=radius_km,
+        country=country,
+        region=region,
+        min_speed_kmh=min_speed_kmh,
+        limit=limit
+    )
 
 
 @mcp_server.tool()
@@ -194,12 +214,14 @@ def query_kafka_stream(
     latitude: Optional[float] = None,
     longitude: Optional[float] = None,
     radius_km: Optional[float] = None,
+    country: str = "",
+    region: str = "",
     min_altitude_feet: Optional[float] = None,
     get_stats: bool = False,
     limit: int = 15
 ) -> Dict[str, Any]:
     """Unified multi-filter query tool for the Apache Kafka live flight telemetry stream.
-    Supports compound queries combining ground speed, geographic coordinates/radius, airline code, flight number, and stream statistics simultaneously.
+    Supports compound queries combining ground speed, country/region boundaries, coordinates/radius, airline, flight number, and stream statistics simultaneously.
     
     Args:
         query: Specific flight number (e.g. 'TK10'), callsign ('THY10'), or registration ('TC-LJA').
@@ -209,6 +231,8 @@ def query_kafka_stream(
         latitude: Latitude coordinate for regional airspace scanning (e.g. 41.0082 for Istanbul).
         longitude: Longitude coordinate for regional airspace scanning (e.g. 28.9784 for Istanbul).
         radius_km: Search radius around coordinates in kilometers (default: 150 km).
+        country: Official country code or name to restrict airspace within exact borders (e.g. 'TR' or 'Turkey').
+        region: Geographic region or major city (e.g. 'Turkey', 'Ankara', 'Istanbul', 'Marmara', 'Aegean', 'Black Sea').
         min_altitude_feet: Minimum altitude filter in feet.
         get_stats: If true, returns overall stream telemetry statistics (max/avg speed, altitude, airlines).
         limit: Maximum number of records to return (default: 15).
@@ -221,6 +245,8 @@ def query_kafka_stream(
         latitude=latitude,
         longitude=longitude,
         radius_km=radius_km,
+        country=country,
+        region=region,
         min_altitude_feet=min_altitude_feet,
         get_stats=get_stats,
         limit=limit
@@ -265,6 +291,11 @@ async def api_tools_execute(request):
                 args["query"] = args.pop("flight_code")
             if "airline_code" in args and "airline" not in args:
                 args["airline"] = args.pop("airline_code")
+            if "min_speed" in args and "min_speed_kmh" not in args:
+                args["min_speed_kmh"] = args.pop("min_speed")
+            if "speed" in args and "min_speed_kmh" not in args:
+                args["min_speed_kmh"] = args.pop("speed")
+        elif tool_name == "get_flights_over_region":
             if "min_speed" in args and "min_speed_kmh" not in args:
                 args["min_speed_kmh"] = args.pop("min_speed")
             if "speed" in args and "min_speed_kmh" not in args:
@@ -449,11 +480,37 @@ async def api_kafka_sync(request):
         return JSONResponse({"status": "error", "error": str(e)}, status_code=500)
 
 
-async def api_kafka_produce_fresh(request):
-    """Fetches 1200 fresh flights from FlightRadar24 and publishes to Kafka."""
+_streamer_stop_event = threading.Event()
+
+def _turkey_streamer_worker():
+    """Background daemon worker continuously ingesting ALL Turkey flights from FlightRadar24 into Kafka topic 'live-flights'."""
+    print("🇹🇷 [KAFKA STREAMER] Real-time Turkey Airspace ➔ Kafka streaming daemon active (interval: 15s, no flight limits).")
     try:
         producer = FlightKafkaProducer()
-        report = producer.collect_and_publish(target_count=1200, topic="live-flights")
+        producer.stream_turkey_flights(
+            interval_seconds=15,
+            topic="live-flights",
+            callback=kafka_store.refresh_turkey_telemetry,
+            stop_event=_streamer_stop_event
+        )
+    except Exception as e:
+        print(f"⚠️ [KAFKA STREAMER] Background streamer thread ended: {e}")
+
+_streamer_thread = None
+
+def start_streamer_if_needed():
+    """Starts the real-time Turkey flight ingestion streamer thread if not already running."""
+    global _streamer_thread
+    if _streamer_thread is None or not _streamer_thread.is_alive():
+        _streamer_thread = threading.Thread(target=_turkey_streamer_worker, daemon=True, name="TurkeyKafkaStreamer")
+        _streamer_thread.start()
+
+
+async def api_kafka_produce_fresh(request):
+    """Fetches ALL fresh flights across Turkey from FlightRadar24 and publishes to Kafka."""
+    try:
+        producer = FlightKafkaProducer()
+        report = producer.publish_turkey_flights(topic="live-flights")
         producer.close()
         kafka_store.sync_from_kafka()
         return JSONResponse(report)
@@ -524,11 +581,13 @@ if __name__ == "__main__":
     print("📡 MCP Endpoint              : http://localhost:8000/mcp")
     print("🔴 1. Project (Live Radar UI): http://localhost:8000")
     print("⚡ 2. Project (Kafka Cockpit): http://localhost:8000/kafka")
+    print("🇹🇷 Real-time Ingestion       : ALL Live Turkey Airspace Flights ➔ Kafka (15s Loop)")
     print("📊 Apache Kafka UI Panel     : http://localhost:8080")
     print("=" * 65)
     print("👉 Open in Browser : http://localhost:8000  or  http://localhost:8000/kafka")
     print("⚠️  NOTE FOR WINDOWS: Do NOT navigate to 'http://0.0.0.0:8000' in browser;")
     print("   always use 'http://localhost:8000' on the local machine!")
     print("=" * 65)
+    start_streamer_if_needed()
     uvicorn.run(app, host="0.0.0.0", port=8000)
 
