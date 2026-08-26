@@ -5,6 +5,7 @@ import math
 import time
 from typing import Dict, Any, List, Optional
 from kafka import KafkaConsumer, TopicPartition
+from geo_service import geo_engine
 
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8")
@@ -18,6 +19,25 @@ def calculate_haversine_distance(lat1: float, lon1: float, lat2: float, lon2: fl
     a = math.sin(dlat / 2) ** 2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2) ** 2
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
     return round(R * c, 2)
+
+
+# Geographic presets and national airspace bounding boxes
+GEO_REGIONS: Dict[str, Dict[str, Any]] = {
+    # Turkey National Airspace Bounding Box (~35.8° - 42.2° N, ~25.6° - 44.8° E)
+    "TR": {"type": "bbox", "min_lat": 35.8, "max_lat": 42.2, "min_lon": 25.6, "max_lon": 44.8, "name": "Türkiye"},
+    "TURKEY": {"type": "bbox", "min_lat": 35.8, "max_lat": 42.2, "min_lon": 25.6, "max_lon": 44.8, "name": "Türkiye"},
+    "TURKIYE": {"type": "bbox", "min_lat": 35.8, "max_lat": 42.2, "min_lon": 25.6, "max_lon": 44.8, "name": "Türkiye"},
+    "TÜRKIYE": {"type": "bbox", "min_lat": 35.8, "max_lat": 42.2, "min_lon": 25.6, "max_lon": 44.8, "name": "Türkiye"},
+    # Major Geographic Regions
+    "MARMARA": {"type": "bbox", "min_lat": 40.0, "max_lat": 42.1, "min_lon": 26.0, "max_lon": 31.0, "name": "Marmara Bölgesi"},
+    "EGE": {"type": "bbox", "min_lat": 36.5, "max_lat": 40.2, "min_lon": 26.0, "max_lon": 30.2, "name": "Ege Bölgesi"},
+    "AEGEAN": {"type": "bbox", "min_lat": 36.5, "max_lat": 40.2, "min_lon": 26.0, "max_lon": 30.2, "name": "Ege Bölgesi"},
+    "AKDENIZ": {"type": "bbox", "min_lat": 36.0, "max_lat": 38.0, "min_lon": 29.0, "max_lon": 36.5, "name": "Akdeniz Bölgesi"},
+    "MEDITERRANEAN": {"type": "bbox", "min_lat": 36.0, "max_lat": 38.0, "min_lon": 29.0, "max_lon": 36.5, "name": "Akdeniz Bölgesi"},
+    "KARADENIZ": {"type": "bbox", "min_lat": 40.5, "max_lat": 42.2, "min_lon": 31.0, "max_lon": 42.0, "name": "Karadeniz Bölgesi"},
+    "BLACK_SEA": {"type": "bbox", "min_lat": 40.5, "max_lat": 42.2, "min_lon": 31.0, "max_lon": 42.0, "name": "Karadeniz Bölgesi"},
+    "IC_ANADOLU": {"type": "bbox", "min_lat": 37.5, "max_lat": 40.5, "min_lon": 30.5, "max_lon": 37.0, "name": "İç Anadolu Bölgesi"},
+}
 
 
 class FlightKafkaStore:
@@ -39,57 +59,100 @@ class FlightKafkaStore:
         # Load initial telemetry records from Kafka
         self.sync_from_kafka()
 
-    def sync_from_kafka(self, max_records: int = 5000, timeout_ms: int = 3000) -> int:
-        """Consumes latest records from Kafka topic and synchronizes in-memory search indexes."""
+    def sync_from_kafka(self, target_count: int = 1200, max_wait_seconds: float = 4.0) -> int:
+        """Consumes latest messages from Kafka topic 'live-flights' into memory cache."""
         print(f"📥 Consuming telemetry from Kafka (Topic: {self.topic}, Server: {self.bootstrap_servers})...")
         start_time = time.time()
         
         try:
             consumer = KafkaConsumer(
-                self.topic,
                 bootstrap_servers=self.bootstrap_servers,
-                auto_offset_reset='earliest',
+                auto_offset_reset="earliest",
                 enable_auto_commit=False,
-                consumer_timeout_ms=timeout_ms,
-                value_deserializer=lambda m: json.loads(m.decode('utf-8'))
+                consumer_timeout_ms=int(max_wait_seconds * 1000),
+                value_deserializer=lambda x: json.loads(x.decode("utf-8"))
             )
-        except Exception as e:
-            print(f"⚠️ Kafka connection error: {e}")
-            return len(self.flights)
+            
+            partitions = consumer.partitions_for_topic(self.topic)
+            if not partitions:
+                print(f"⚠️ Topic '{self.topic}' not found or empty.")
+                consumer.close()
+                return 0
 
-        consumed_count = 0
-        try:
+            # Seek to near end to retrieve latest flight records
+            topic_partitions = [TopicPartition(self.topic, p) for p in partitions]
+            end_offsets = consumer.end_offsets(topic_partitions)
+
+            for tp in topic_partitions:
+                end_off = end_offsets.get(tp, 0)
+                start_off = max(0, end_off - target_count)
+                consumer.assign([tp])
+                consumer.seek(tp, start_off)
+
+            new_flights = {}
+            new_by_num = {}
+            new_by_callsign = {}
+            new_by_reg = {}
+
+            consumed = 0
             for message in consumer:
-                flight = message.value
-                if not isinstance(flight, dict):
-                    continue
+                record = message.value
+                flight_id = record.get("flight_id")
+                if flight_id:
+                    new_flights[flight_id] = record
 
-                flight_id = flight.get("flight_id") or str(message.offset)
-                self.flights[flight_id] = flight
+                    f_num = (record.get("flight_number") or "").upper().strip()
+                    callsign = (record.get("callsign") or "").upper().strip()
+                    reg = (record.get("registration") or "").upper().strip()
 
-                # Update search indexes
-                f_num = str(flight.get("flight_number") or "").strip().upper()
-                if f_num:
-                    self.by_flight_number[f_num] = flight_id
+                    if f_num: new_by_num[f_num] = flight_id
+                    if callsign: new_by_callsign[callsign] = flight_id
+                    if reg: new_by_reg[reg] = flight_id
 
-                callsign = str(flight.get("callsign") or "").strip().upper()
-                if callsign:
-                    self.by_callsign[callsign] = flight_id
+                    consumed += 1
 
-                reg = str(flight.get("registration") or "").strip().upper()
-                if reg:
-                    self.by_registration[reg] = flight_id
-
-                consumed_count += 1
-                if consumed_count >= max_records:
+                if time.time() - start_time > max_wait_seconds:
                     break
-        finally:
+
             consumer.close()
+            if new_flights:
+                self.flights = new_flights
+                self.by_flight_number = new_by_num
+                self.by_callsign = new_by_callsign
+                self.by_registration = new_by_reg
+        except Exception as e:
+            print(f"⚠️ Kafka connection warning: {e}")
 
         self.last_sync_time = time.time()
         elapsed = round(self.last_sync_time - start_time, 2)
         print(f"✅ Kafka Synchronization Complete: {len(self.flights)} flights indexed in memory ({elapsed}s).")
         return len(self.flights)
+
+    def refresh_turkey_telemetry(self, flights: List[Dict[str, Any]]):
+        """Refreshes in-memory store atomically with freshly streamed Turkey airspace flights."""
+        new_flights = {}
+        new_by_num = {}
+        new_by_callsign = {}
+        new_by_reg = {}
+
+        for record in flights:
+            flight_id = record.get("flight_id")
+            if flight_id:
+                new_flights[flight_id] = record
+
+                f_num = (record.get("flight_number") or "").upper().strip()
+                callsign = (record.get("callsign") or "").upper().strip()
+                reg = (record.get("registration") or "").upper().strip()
+
+                if f_num: new_by_num[f_num] = flight_id
+                if callsign: new_by_callsign[callsign] = flight_id
+                if reg: new_by_reg[reg] = flight_id
+
+        self.flights = new_flights
+        self.by_flight_number = new_by_num
+        self.by_callsign = new_by_callsign
+        self.by_registration = new_by_reg
+        self.last_sync_time = time.time()
 
     def query_flights(
         self,
@@ -100,12 +163,14 @@ class FlightKafkaStore:
         latitude: Optional[float] = None,
         longitude: Optional[float] = None,
         radius_km: Optional[float] = None,
+        country: Optional[str] = None,
+        region: Optional[str] = None,
         min_altitude_feet: Optional[float] = None,
         get_stats: bool = False,
         limit: int = 15
     ) -> Dict[str, Any]:
         """Unified multi-filter query method for the Kafka telemetry buffer.
-        Evaluates all provided constraints (speed, location, airline, query, stats) simultaneously in a single pass.
+        Evaluates all provided constraints (speed, location, country, region, airline, query, stats) simultaneously in a single pass.
         """
         # If statistics requested, return stream summary
         if get_stats:
@@ -115,6 +180,34 @@ class FlightKafkaStore:
         clean_airline = airline.strip().upper() if airline and str(airline).strip() else None
         has_coords = (latitude is not None and longitude is not None)
         effective_radius = float(radius_km) if radius_km is not None else (150.0 if has_coords else None)
+
+        # Resolve country or region preset if specified
+        geo_filter = None
+        region_name = None
+        raw_geo = (region or country or "").strip()
+
+        # 1. First check if raw_geo corresponds to one of Turkey's 81 provinces (Exact GeoJSON Polygon)
+        if raw_geo:
+            matched_province = geo_engine.resolve_province_name(raw_geo)
+            if matched_province:
+                prov_info = geo_engine.get_province_info(matched_province)
+                region_name = matched_province
+                geo_filter = {
+                    "type": "polygon",
+                    "province": matched_province,
+                    "name": matched_province,
+                    "center": prov_info.get("center") if prov_info else None
+                }
+
+        # 2. Fall back to national/regional preset bounding boxes (e.g. TR, Marmara, Aegean)
+        if not geo_filter and raw_geo:
+            geo_target = raw_geo.upper().replace("İ", "I")
+            if geo_target in GEO_REGIONS:
+                geo_filter = GEO_REGIONS[geo_target]
+                region_name = geo_filter.get("name", geo_target)
+            elif "TURK" in geo_target or geo_target == "TR":
+                geo_filter = GEO_REGIONS["TR"]
+                region_name = "Türkiye"
 
         matched = []
         for f in self.flights.values():
@@ -154,9 +247,28 @@ class FlightKafkaStore:
                 if clean_q not in f_num and clean_q not in c_sign and clean_q not in reg and clean_q != f_id:
                     continue
 
-            # 5. Geographic Proximity Filter
+            # 5. Geographic Proximity & National Airspace Filtering
             dist = None
-            if has_coords:
+            if geo_filter:
+                if f_lat is None or f_lon is None:
+                    continue
+                if geo_filter["type"] == "polygon":
+                    if not geo_engine.is_point_in_province(f_lat, f_lon, geo_filter["province"]):
+                        continue
+                    if geo_filter.get("center"):
+                        dist = calculate_haversine_distance(
+                            geo_filter["center"]["lat"], geo_filter["center"]["lon"], f_lat, f_lon
+                        )
+                elif geo_filter["type"] == "bbox":
+                    if not (geo_filter["min_lat"] <= f_lat <= geo_filter["max_lat"] and
+                            geo_filter["min_lon"] <= f_lon <= geo_filter["max_lon"]):
+                        continue
+                elif geo_filter["type"] == "radial":
+                    dist = calculate_haversine_distance(geo_filter["lat"], geo_filter["lon"], f_lat, f_lon)
+                    if dist > geo_filter["radius_km"]:
+                        continue
+
+            elif has_coords:
                 if f_lat is None or f_lon is None:
                     continue
                 dist = calculate_haversine_distance(latitude, longitude, f_lat, f_lon)
@@ -164,28 +276,41 @@ class FlightKafkaStore:
                     continue
 
             # Record match
+            item = dict(f)
             if dist is not None:
-                item = dict(f)
                 item["distance_to_center_km"] = dist
-                matched.append(item)
-            else:
-                matched.append(f)
+            if region_name:
+                item["filtered_region"] = region_name
+            matched.append(item)
 
         # Smart Sorting:
         # If coordinates provided without specific speed filter, sort by distance
-        if has_coords and min_speed_kmh is None:
+        if (has_coords or (geo_filter and geo_filter.get("type") == "radial")) and min_speed_kmh is None:
             matched.sort(key=lambda x: x.get("distance_to_center_km", 999999))
         else:
             # Default sort by ground speed descending
             matched.sort(key=lambda x: x.get("telemetry", {}).get("ground_speed_kmh", 0) or 0, reverse=True)
 
-        return {
+        resp = {
             "status": "success",
             "source": "kafka_in_memory_stream",
             "total_matches": len(matched),
             "returned_count": min(len(matched), limit),
             "flights": matched[:limit]
         }
+        if region_name:
+            resp["applied_region"] = region_name
+            if geo_filter and geo_filter.get("type") == "polygon":
+                prov_info = geo_engine.get_province_info(region_name)
+                if prov_info:
+                    resp["province_details"] = {
+                        "name": prov_info["name"],
+                        "plate": prov_info["plate_code"],
+                        "geographic_region": prov_info["region"],
+                        "center_coords": prov_info["center"],
+                        "summary": prov_info["summary"]
+                    }
+        return resp
 
     def find_flight(self, query: str) -> Dict[str, Any]:
         """Finds a flight in Kafka memory by flight number, callsign, registration or flight ID."""
