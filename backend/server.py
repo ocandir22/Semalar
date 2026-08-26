@@ -220,7 +220,7 @@ def query_kafka_stream(
 
 # Registry of all MCP Tools available on this Server
 MCP_TOOLS_REGISTRY = {
-    # 1. Project Live Tools
+    # 1. Project Live Tools (FlightRadar24)
     "get_flight_info": get_flight_info,
     "search_airline_flights": search_airline_flights,
     "get_flights_over_region": get_flights_over_region,
@@ -228,13 +228,6 @@ MCP_TOOLS_REGISTRY = {
     "get_airport_info": get_airport_info,
     # 2. Project Unified Kafka Tool
     "query_kafka_stream": query_kafka_stream,
-    # Backward compatibility aliases
-    "get_flights_above_speed": lambda min_speed_kmh=800.0, limit=15, **kw: query_kafka_stream(min_speed_kmh=min_speed_kmh, limit=limit),
-    "get_flight_from_kafka": lambda query="", flight_code="", **kw: query_kafka_stream(query=query or flight_code, limit=1),
-    "get_flights_over_region_from_kafka": lambda latitude=0.0, longitude=0.0, radius_km=150.0, limit=15, **kw: query_kafka_stream(latitude=latitude, longitude=longitude, radius_km=radius_km, limit=limit),
-    "search_airline_from_kafka": lambda airline_code="", limit=15, **kw: query_kafka_stream(airline=airline_code, limit=limit),
-    "get_kafka_stream_stats": lambda **kw: query_kafka_stream(get_stats=True),
-    "refresh_kafka_stream": lambda **kw: {"status": "success", "message": f"Kafka stream synchronized. Total {kafka_store.sync_from_kafka()} flights in memory.", "total_cached_flights": len(kafka_store.flights)},
 }
 
 
@@ -265,13 +258,13 @@ async def api_tools_execute(request):
                 args["min_speed_kmh"] = args.pop("min_speed")
             if "speed" in args and "min_speed_kmh" not in args:
                 args["min_speed_kmh"] = args.pop("speed")
-        elif tool_name in ["get_flight_info", "get_flight_from_kafka"]:
-            target_val = args.get("flight_code") or args.get("query") or args.get("flight_number") or args.get("callsign") or ""
-            args = {"query": target_val, "flight_code": target_val}
+        elif tool_name == "get_flight_info":
+            target_val = args.get("query") or args.get("flight_code") or args.get("flight_number") or args.get("callsign") or ""
+            args = {"query": target_val}
         elif tool_name == "get_airport_info":
             code = args.get("airport_code") or args.get("query") or args.get("code") or ""
             args = {"airport_code": code}
-        elif tool_name in ["search_airline_flights", "search_airline_from_kafka"]:
+        elif tool_name == "search_airline_flights":
             code = args.get("airline_code") or args.get("airline") or args.get("code") or ""
             limit = int(args.get("limit", 15))
             args = {"airline_code": code, "limit": limit}
@@ -339,12 +332,12 @@ async def api_status(request):
         "model": agent_info["model"],
         "mcp_url": "http://localhost:8000/mcp",
         "tools": [
-            {"name": "get_flight_info", "description": "Live flight and telemetry search (e.g. TK10, TC-JYA)"},
-            {"name": "search_airline_flights", "description": "Airline active airborne flights (e.g. THY, PGT)"},
-            {"name": "get_flights_over_region", "description": "Regional radar search (latitude, longitude, radius)"},
+            {"name": "get_flight_info", "description": "Live flight and telemetry search (e.g. TK10, TC-JYA, DLH400)"},
+            {"name": "search_airline_flights", "description": "Airline active airborne flights (e.g. THY, PGT, DLH, BAW)"},
+            {"name": "get_flights_over_region", "description": "Regional radar search (81 Turkish province polygons or macro-regions, speed filter)"},
             {"name": "get_most_tracked_flights", "description": "Top live most-tracked flights worldwide"},
-            {"name": "get_airport_info", "description": "Airport details and coordinates (e.g. IST, SAW)"},
-            {"name": "query_kafka_stream", "description": "Unified multi-filter query for Kafka live telemetry (speed, coords, airline, flight ID, stats)"}
+            {"name": "get_airport_info", "description": "Airport details and coordinates (e.g. IST, SAW, ESB)"},
+            {"name": "query_kafka_stream", "description": "Unified multi-filter query for Kafka live telemetry (81 provinces, speed, altitude, airline, flight ID, stats)"}
         ]
     })
 

@@ -49,15 +49,8 @@ def get_flight_info(query: str) -> Dict[str, Any]:
     clean_query = raw_query.upper()
     no_space_query = clean_query.replace(" ", "").replace("-", "")
 
-    search_candidates = [clean_query, no_space_query]
-    if no_space_query.startswith("TK") and len(no_space_query) > 2:
-        search_candidates.append("THY" + no_space_query[2:])
-    elif no_space_query.startswith("THY") and len(no_space_query) > 3:
-        search_candidates.append("TK" + no_space_query[3:])
-    elif no_space_query.startswith("PC") and len(no_space_query) > 2:
-        search_candidates.append("PGT" + no_space_query[2:])
-    elif no_space_query.startswith("PGT") and len(no_space_query) > 3:
-        search_candidates.append("PC" + no_space_query[3:])
+    # Direct search candidate normalization (universal for all global airlines, callsigns, and registrations)
+    search_candidates = list(dict.fromkeys([clean_query, no_space_query]))
 
     target_flight_id = None
     target_flight_obj = None
