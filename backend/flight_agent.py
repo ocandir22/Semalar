@@ -79,13 +79,8 @@ SYSTEM_INSTRUCTION = (
     "You are an expert aviation, aircraft telemetry, live radar, and Apache Kafka live flight telemetry stream AI assistant.\n"
     "To answer user questions, you MUST strictly and exclusively use the provided MCP tools.\n\n"
     "🎯 TOOL SELECTION GUIDE:\n"
-    "1. Flight details / Location / Altitude / Speed queries: Call 'get_flight_info' (live radar) or 'get_flight_from_kafka' (Kafka store).\n"
-    "2. High speed / Supersonic flights (e.g. above 800 km/h, 900 km/h, 1000 km/h): Call 'get_flights_above_speed'.\n"
-    "3. Regional / Coordinate queries (e.g. flights over Istanbul, Ankara, London): Call 'get_flights_over_region' or 'get_flights_over_region_from_kafka'.\n"
-    "4. Airline fleets (e.g. THY, Turkish Airlines, Pegasus, Lufthansa): Call 'search_airline_flights' or 'search_airline_from_kafka'.\n"
-    "5. Top most-tracked live flights: Call 'get_most_tracked_flights'.\n"
-    "6. Airport details (e.g. IST, SAW, LHR, JFK): Call 'get_airport_info'.\n"
-    "7. Kafka stream statistics (average speed, top altitude, total flights): Call 'get_kafka_stream_stats'.\n\n"
+    "1. Live FlightRadar24 queries: Use 'get_flight_info', 'search_airline_flights', 'get_flights_over_region', 'get_most_tracked_flights', 'get_airport_info'.\n"
+    "2. Kafka stream telemetry queries: Use the unified 'query_kafka_stream' tool. It supports compound filtering combining query, airline, min_speed_kmh, latitude, longitude, radius_km, and get_stats simultaneously.\n\n"
     "📌 RESPONSE FORMAT GUIDELINES:\n"
     "• Never hallucinate flight telemetry or models. Only use exact data returned by the tools.\n"
     "• Report altitude in both feet and meters (e.g. 37,000 ft / ~11,277 m).\n"
@@ -211,68 +206,21 @@ LOCAL_MCP_DEFINITIONS = [
         }
     },
     {
-        "name": "get_flights_above_speed",
-        "description": "Filters and lists live flights from the Apache Kafka telemetry stream flying at or above a specified ground speed in km/h (e.g. 800 km/h, 900 km/h).",
+        "name": "query_kafka_stream",
+        "description": "Unified multi-filter query tool for the Apache Kafka live flight telemetry stream. Supports compound queries combining ground speed, geographic coordinates/radius, airline code, flight number, and stream statistics simultaneously.",
         "parameters": {
             "type": "object",
             "properties": {
-                "min_speed_kmh": {"type": "number", "description": "Minimum ground speed filter in km/h (e.g. 800 or 900)"},
+                "query": {"type": "string", "description": "Specific flight number (e.g. 'TK10'), callsign ('THY10'), or registration ('TC-LJA')"},
+                "airline": {"type": "string", "description": "Airline ICAO or IATA code prefix (e.g. 'THY', 'TK', 'PGT', 'DLH')"},
+                "min_speed_kmh": {"type": "number", "description": "Minimum ground speed filter in km/h (e.g. 800 or 900 for fast/supersonic flights)"},
+                "max_speed_kmh": {"type": "number", "description": "Maximum ground speed filter in km/h"},
+                "latitude": {"type": "number", "description": "Center latitude in decimal degrees for regional airspace scan (e.g. 41.0082 for Istanbul)"},
+                "longitude": {"type": "number", "description": "Center longitude in decimal degrees for regional airspace scan (e.g. 28.9784 for Istanbul)"},
+                "radius_km": {"type": "number", "description": "Search radius around coordinates in kilometers (default: 150)"},
+                "min_altitude_feet": {"type": "number", "description": "Minimum altitude filter in feet"},
+                "get_stats": {"type": "boolean", "description": "Set to true to retrieve overall Kafka stream statistics (max/avg speed, altitude, airline count)"},
                 "limit": {"type": "integer", "description": "Maximum number of flights to return (default: 15)"}
-            }
-        }
-    },
-    {
-        "name": "get_flight_from_kafka",
-        "description": "Finds a flight instantly with sub-millisecond latency from the Apache Kafka 1,200 live flight buffer by flight number or registration.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "flight_code": {"type": "string", "description": "Flight number (e.g. 'TK10', 'SABIR741') or registration (e.g. 'TC-LJA')"}
-            },
-            "required": ["flight_code"]
-        }
-    },
-    {
-        "name": "get_flights_over_region_from_kafka",
-        "description": "Finds live flights within a coordinate radius from the Apache Kafka telemetry buffer.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "latitude": {"type": "number", "description": "Center latitude in decimal degrees (e.g. 41.0082)"},
-                "longitude": {"type": "number", "description": "Center longitude in decimal degrees (e.g. 28.9784)"},
-                "radius_km": {"type": "number", "description": "Search radius in kilometers (default: 100)"},
-                "limit": {"type": "integer", "description": "Maximum number of flights to return (default: 15)"}
-            },
-            "required": ["latitude", "longitude"]
-        }
-    },
-    {
-        "name": "search_airline_from_kafka",
-        "description": "Searches flights for a given airline in the Apache Kafka live flight buffer.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "airline_code": {"type": "string", "description": "Airline ICAO or IATA code (e.g. 'THY', 'TK', 'PGT')"},
-                "limit": {"type": "integer", "description": "Maximum number of flights to return (default: 10)"}
-            },
-            "required": ["airline_code"]
-        }
-    },
-    {
-        "name": "get_kafka_stream_stats",
-        "description": "Retrieves real-time analytics across the Apache Kafka 1,200 aircraft buffer, including max/average speeds, altitudes, and airline distribution.",
-        "parameters": {
-            "type": "object",
-            "properties": {}
-        }
-    },
-    {
-        "name": "refresh_kafka_stream",
-        "description": "Refreshes and synchronizes the in-memory cache with the latest messages from the Kafka 'live-flights' topic.",
-        "parameters": {
-            "type": "object",
-            "properties": {
-                "target_count": {"type": "integer", "description": "Target number of flight records to sync (default: 1200)"}
             }
         }
     }
@@ -308,12 +256,7 @@ async def execute_mcp_tool(tool_name: str, tool_args: dict, mcp_url: Optional[st
 
 KAFKA_MCP_DEFINITIONS = [
     d for d in LOCAL_MCP_DEFINITIONS if d["name"] in [
-        "get_flight_from_kafka",
-        "get_flights_above_speed",
-        "get_flights_over_region_from_kafka",
-        "search_airline_from_kafka",
-        "get_kafka_stream_stats",
-        "refresh_kafka_stream"
+        "query_kafka_stream"
     ]
 ]
 
@@ -329,14 +272,16 @@ LIVE_MCP_DEFINITIONS = [
 
 KAFKA_SYSTEM_INSTRUCTION = (
     "You are an AI Aviation Assistant specialized in the Apache Kafka 1,200 live aircraft telemetry stream.\n"
-    "To answer questions, you MUST strictly use ONLY the provided KAFKA MCP TOOLS:\n"
-    "1. Flight Info / Location / Altitude / Speed: Call 'get_flight_from_kafka'.\n"
-    "2. Speed Filtering (e.g. flights above 800 km/h or 900 km/h): Call 'get_flights_above_speed'.\n"
-    "3. Regional / Coordinate queries (e.g. radius around coordinates): Call 'get_flights_over_region_from_kafka'.\n"
-    "4. Airline fleet searches: Call 'search_airline_from_kafka'.\n"
-    "5. Kafka telemetry statistics: Call 'get_kafka_stream_stats'.\n\n"
+    "To answer questions, you MUST strictly use ONLY the unified KAFKA MCP TOOL: 'query_kafka_stream'.\n\n"
+    "💡 HOW TO USE 'query_kafka_stream':\n"
+    "• Single flight info / search: pass query='TK10' or registration.\n"
+    "• High-speed / supersonic filtering: pass min_speed_kmh=800 or 900.\n"
+    "• Regional / city airspace radar: pass latitude, longitude, and radius_km (e.g. Istanbul is 41.0082, 28.9784).\n"
+    "• Airline filtering: pass airline='THY' or 'PGT'.\n"
+    "• COMPOUND QUERIES: Combine any parameters! (e.g. Istanbul airspace + min_speed_kmh=800 -> pass latitude=41.0082, longitude=28.9784, radius_km=150, min_speed_kmh=800).\n"
+    "• Kafka stream statistics: pass get_stats=true.\n\n"
     "📌 RULES:\n"
-    "• Never fabricate data. Only use exact values returned from the Kafka tool.\n"
+    "• Never fabricate data. Only use exact values returned from query_kafka_stream.\n"
     "• State altitude in both feet and meters, speed in both knots and km/h.\n"
     "• Provide concise, clean, bulleted summaries."
 )

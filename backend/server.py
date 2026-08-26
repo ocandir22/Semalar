@@ -181,79 +181,50 @@ def get_airport_info(airport_code: str) -> Dict[str, Any]:
 
 
 # ============================================================
-# KAFKA STREAM POWERED MCP TOOLS
+# UNIFIED KAFKA STREAM MCP TOOL
 # ============================================================
 
 @mcp_server.tool()
-@audit_tool("get_flights_above_speed")
-def get_flights_above_speed(min_speed_kmh: float = 800.0, limit: int = 15) -> Dict[str, Any]:
-    """Finds and lists live flights from the Kafka telemetry stream that are flying at or above a specified ground speed in km/h (e.g. 800 km/h, 900 km/h, 1000 km/h).
-    Returns flights sorted from fastest to slowest with aircraft models, routes, coordinates, and exact telemetry speeds.
+@audit_tool("query_kafka_stream")
+def query_kafka_stream(
+    query: str = "",
+    airline: str = "",
+    min_speed_kmh: Optional[float] = None,
+    max_speed_kmh: Optional[float] = None,
+    latitude: Optional[float] = None,
+    longitude: Optional[float] = None,
+    radius_km: Optional[float] = None,
+    min_altitude_feet: Optional[float] = None,
+    get_stats: bool = False,
+    limit: int = 15
+) -> Dict[str, Any]:
+    """Unified multi-filter query tool for the Apache Kafka live flight telemetry stream.
+    Supports compound queries combining ground speed, geographic coordinates/radius, airline code, flight number, and stream statistics simultaneously.
     
     Args:
-        min_speed_kmh: Minimum ground speed filter in km/h (default: 800.0 km/h).
-        limit: Maximum number of fast flights to return (default: 15).
+        query: Specific flight number (e.g. 'TK10'), callsign ('THY10'), or registration ('TC-LJA').
+        airline: Airline code or prefix (e.g. 'THY', 'TK', 'PGT', 'DLH').
+        min_speed_kmh: Minimum ground speed filter in km/h (e.g. 800, 900 for fast/supersonic flights).
+        max_speed_kmh: Maximum ground speed filter in km/h.
+        latitude: Latitude coordinate for regional airspace scanning (e.g. 41.0082 for Istanbul).
+        longitude: Longitude coordinate for regional airspace scanning (e.g. 28.9784 for Istanbul).
+        radius_km: Search radius around coordinates in kilometers (default: 150 km).
+        min_altitude_feet: Minimum altitude filter in feet.
+        get_stats: If true, returns overall stream telemetry statistics (max/avg speed, altitude, airlines).
+        limit: Maximum number of records to return (default: 15).
     """
-    return kafka_store.find_flights_above_speed(min_speed_kmh=min_speed_kmh, limit=limit)
-
-
-@mcp_server.tool()
-@audit_tool("get_flight_from_kafka")
-def get_flight_from_kafka(query: str = "", flight_code: str = "") -> Dict[str, Any]:
-    """Finds a live flight from the Kafka stream cache by flight number (e.g. 'TK10', 'PC2020'), callsign (e.g. 'THY10'), or registration tail (e.g. 'TC-LJA').
-    Provides instant sub-millisecond telemetry response from the 1200+ buffered flights.
-    
-    Args:
-        query: Flight number, callsign, or registration.
-        flight_code: Alternative parameter alias for query.
-    """
-    target = query or flight_code or ""
-    return kafka_store.find_flight(target)
-
-
-@mcp_server.tool()
-@audit_tool("get_flights_over_region_from_kafka")
-def get_flights_over_region_from_kafka(latitude: float, longitude: float, radius_km: float = 150.0, limit: int = 15) -> Dict[str, Any]:
-    """Finds live flights from the Kafka telemetry stream within a given radius (km) around specified coordinates (latitude, longitude).
-    
-    Args:
-        latitude: Latitude in decimal degrees (e.g. 41.0082 for Istanbul).
-        longitude: Longitude in decimal degrees (e.g. 28.9784 for Istanbul).
-        radius_km: Search radius in kilometers (default: 150 km).
-        limit: Maximum number of flights to return (default: 15).
-    """
-    return kafka_store.find_nearby(latitude=latitude, longitude=longitude, radius_km=radius_km, limit=limit)
-
-
-@mcp_server.tool()
-@audit_tool("search_airline_from_kafka")
-def search_airline_from_kafka(airline_code: str, limit: int = 15) -> Dict[str, Any]:
-    """Searches active flights for a given airline (e.g. 'TK'/'THY', 'PC'/'PGT', 'LH'/'DLH') from the Kafka live stream cache.
-    
-    Args:
-        airline_code: 2-letter IATA or 3-letter ICAO airline code.
-        limit: Maximum number of flights to return (default: 15).
-    """
-    return kafka_store.find_by_airline(airline_code=airline_code, limit=limit)
-
-
-@mcp_server.tool()
-@audit_tool("get_kafka_stream_stats")
-def get_kafka_stream_stats() -> Dict[str, Any]:
-    """Retrieves real-time statistical analytics across the Kafka live flight stream, including total indexed flights, unique airlines, maximum & average speeds, and maximum & average altitudes."""
-    return kafka_store.get_telemetry_stats()
-
-
-@mcp_server.tool()
-@audit_tool("refresh_kafka_stream")
-def refresh_kafka_stream() -> Dict[str, Any]:
-    """Refreshes and synchronizes the in-memory cache with the latest messages from the Kafka 'live-flights' topic."""
-    total = kafka_store.sync_from_kafka()
-    return {
-        "status": "success",
-        "message": f"Kafka stream synchronized. Total {total} active flights in memory cache.",
-        "total_cached_flights": total
-    }
+    return kafka_store.query_flights(
+        query=query,
+        airline=airline,
+        min_speed_kmh=min_speed_kmh,
+        max_speed_kmh=max_speed_kmh,
+        latitude=latitude,
+        longitude=longitude,
+        radius_km=radius_km,
+        min_altitude_feet=min_altitude_feet,
+        get_stats=get_stats,
+        limit=limit
+    )
 
 
 # Registry of all MCP Tools available on this Server
@@ -264,13 +235,15 @@ MCP_TOOLS_REGISTRY = {
     "get_flights_over_region": get_flights_over_region,
     "get_most_tracked_flights": get_most_tracked_flights,
     "get_airport_info": get_airport_info,
-    # 2. Project Kafka Tools
-    "get_flights_above_speed": get_flights_above_speed,
-    "get_flight_from_kafka": get_flight_from_kafka,
-    "get_flights_over_region_from_kafka": get_flights_over_region_from_kafka,
-    "search_airline_from_kafka": search_airline_from_kafka,
-    "get_kafka_stream_stats": get_kafka_stream_stats,
-    "refresh_kafka_stream": refresh_kafka_stream,
+    # 2. Project Unified Kafka Tool
+    "query_kafka_stream": query_kafka_stream,
+    # Backward compatibility aliases
+    "get_flights_above_speed": lambda min_speed_kmh=800.0, limit=15, **kw: query_kafka_stream(min_speed_kmh=min_speed_kmh, limit=limit),
+    "get_flight_from_kafka": lambda query="", flight_code="", **kw: query_kafka_stream(query=query or flight_code, limit=1),
+    "get_flights_over_region_from_kafka": lambda latitude=0.0, longitude=0.0, radius_km=150.0, limit=15, **kw: query_kafka_stream(latitude=latitude, longitude=longitude, radius_km=radius_km, limit=limit),
+    "search_airline_from_kafka": lambda airline_code="", limit=15, **kw: query_kafka_stream(airline=airline_code, limit=limit),
+    "get_kafka_stream_stats": lambda **kw: query_kafka_stream(get_stats=True),
+    "refresh_kafka_stream": lambda **kw: {"status": "success", "message": f"Kafka stream synchronized. Total {kafka_store.sync_from_kafka()} flights in memory.", "total_cached_flights": len(kafka_store.flights)},
 }
 
 
@@ -287,7 +260,16 @@ async def api_tools_execute(request):
         tool_func = MCP_TOOLS_REGISTRY[tool_name]
 
         # Handle parameter aliases safely
-        if tool_name in ["get_flight_info", "get_flight_from_kafka"]:
+        if tool_name == "query_kafka_stream":
+            if "flight_code" in args and "query" not in args:
+                args["query"] = args.pop("flight_code")
+            if "airline_code" in args and "airline" not in args:
+                args["airline"] = args.pop("airline_code")
+            if "min_speed" in args and "min_speed_kmh" not in args:
+                args["min_speed_kmh"] = args.pop("min_speed")
+            if "speed" in args and "min_speed_kmh" not in args:
+                args["min_speed_kmh"] = args.pop("speed")
+        elif tool_name in ["get_flight_info", "get_flight_from_kafka"]:
             target_val = args.get("flight_code") or args.get("query") or args.get("flight_number") or args.get("callsign") or ""
             args = {"query": target_val, "flight_code": target_val}
         elif tool_name == "get_airport_info":
@@ -366,12 +348,7 @@ async def api_status(request):
             {"name": "get_flights_over_region", "description": "Regional radar search (latitude, longitude, radius)"},
             {"name": "get_most_tracked_flights", "description": "Top live most-tracked flights worldwide"},
             {"name": "get_airport_info", "description": "Airport details and coordinates (e.g. IST, SAW)"},
-            {"name": "get_flights_above_speed", "description": "Kafka stream supersonic/high-speed flight filter"},
-            {"name": "get_flight_from_kafka", "description": "Instant flight search from Kafka telemetry buffer"},
-            {"name": "get_flights_over_region_from_kafka", "description": "Regional radar search from Kafka telemetry buffer"},
-            {"name": "search_airline_from_kafka", "description": "Airline flight search from Kafka telemetry buffer"},
-            {"name": "get_kafka_stream_stats", "description": "Kafka 1200+ stream speed, altitude, and airline telemetry stats"},
-            {"name": "refresh_kafka_stream", "description": "Instantly refresh memory store from Kafka 'live-flights' topic"}
+            {"name": "query_kafka_stream", "description": "Unified multi-filter query for Kafka live telemetry (speed, coords, airline, flight ID, stats)"}
         ]
     })
 
@@ -548,6 +525,10 @@ if __name__ == "__main__":
     print("🔴 1. Project (Live Radar UI): http://localhost:8000")
     print("⚡ 2. Project (Kafka Cockpit): http://localhost:8000/kafka")
     print("📊 Apache Kafka UI Panel     : http://localhost:8080")
+    print("=" * 65)
+    print("👉 Open in Browser : http://localhost:8000  or  http://localhost:8000/kafka")
+    print("⚠️  NOTE FOR WINDOWS: Do NOT navigate to 'http://0.0.0.0:8000' in browser;")
+    print("   always use 'http://localhost:8000' on the local machine!")
     print("=" * 65)
     uvicorn.run(app, host="0.0.0.0", port=8000)
 
