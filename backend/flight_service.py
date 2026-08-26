@@ -273,175 +273,108 @@ GEO_REGIONS: Dict[str, Dict[str, Any]] = {
 
 
 def get_flights_over_region(
-    latitude: Optional[float] = None,
-    longitude: Optional[float] = None,
-    radius_km: float = 100.0,
-    country: Optional[str] = None,
-    region: Optional[str] = None,
+    region: str = "Turkey",
     min_speed_kmh: Optional[float] = None,
-    limit: int = 15
+    limit: int = 15,
+    **kwargs
 ) -> Dict[str, Any]:
-    """Finds live flights within a given radius around specified coordinates, or within official national / regional borders (e.g. Turkey / Ankara)."""
-    geo_filter = None
-    region_name = None
-    raw_geo = (region or country or "").strip()
+    """Finds live flights within official 81-province boundaries or national/regional macro-zones on FlightRadar24."""
+    raw_geo = (region or kwargs.get("country") or "Turkey").strip()
 
-    # 1. First check if raw_geo matches one of Turkey's 81 provinces (Exact GeoJSON Polygon)
-    if raw_geo:
-        matched_province = geo_engine.resolve_province_name(raw_geo)
-        if matched_province:
-            prov_info = geo_engine.get_province_info(matched_province)
-            if prov_info:
-                bbox = prov_info["bbox"]
-                center = prov_info["center"]
-                bounds = f"{bbox['max_lat']},{bbox['min_lat']},{bbox['min_lon']},{bbox['max_lon']}"
-                try:
-                    flights = fr_api.get_flights(bounds=bounds)
-                except Exception as e:
-                    return {"status": "error", "message": f"Error during provincial radar scan: {str(e)}"}
+    # 1. Check if raw_geo matches one of Turkey's 81 provinces (Exact GeoJSON Polygon)
+    matched_province = geo_engine.resolve_province_name(raw_geo)
+    if matched_province:
+        prov_info = geo_engine.get_province_info(matched_province)
+        if prov_info:
+            bbox = prov_info["bbox"]
+            center = prov_info["center"]
+            bounds = f"{bbox['max_lat']},{bbox['min_lat']},{bbox['min_lon']},{bbox['max_lon']}"
+            try:
+                flights = fr_api.get_flights(bounds=bounds)
+            except Exception as e:
+                return {"status": "error", "message": f"Error during provincial radar scan: {str(e)}"}
 
-                filtered = []
-                for f in flights:
-                    # Precise Point-in-Polygon test
-                    if not geo_engine.is_point_in_province(f.latitude, f.longitude, matched_province):
-                        continue
-                    spd_kmh = knots_to_kmh(f.ground_speed) or 0
-                    if min_speed_kmh is not None and spd_kmh < min_speed_kmh:
-                        continue
-                    dist = calculate_haversine_distance(center["lat"], center["lon"], f.latitude, f.longitude)
-                    filtered.append((dist, f))
+            filtered = []
+            for f in flights:
+                # Precise Point-in-Polygon test
+                if not geo_engine.is_point_in_province(f.latitude, f.longitude, matched_province):
+                    continue
+                spd_kmh = knots_to_kmh(f.ground_speed) or 0
+                if min_speed_kmh is not None and spd_kmh < min_speed_kmh:
+                    continue
+                dist = calculate_haversine_distance(center["lat"], center["lon"], f.latitude, f.longitude)
+                filtered.append((dist, f))
 
-                # Sort by distance to provincial center or speed
-                if min_speed_kmh is not None:
-                    filtered.sort(key=lambda x: knots_to_kmh(x[1].ground_speed) or 0, reverse=True)
-                else:
-                    filtered.sort(key=lambda x: x[0])
+            # Sort by distance to provincial center or speed
+            if min_speed_kmh is not None:
+                filtered.sort(key=lambda x: knots_to_kmh(x[1].ground_speed) or 0, reverse=True)
+            else:
+                filtered.sort(key=lambda x: x[0])
 
-                results = []
-                for dist, f in filtered[:limit]:
-                    results.append({
-                        "flight_number": f.number,
-                        "callsign": f.callsign,
-                        "aircraft_model": f.aircraft_code,
-                        "province": matched_province,
-                        "distance_km": dist,
-                        "latitude": f.latitude,
-                        "longitude": f.longitude,
-                        "altitude_feet": f.altitude,
-                        "altitude_meters": feet_to_meters(f.altitude),
-                        "ground_speed_kmh": knots_to_kmh(f.ground_speed),
-                        "heading": f.heading,
-                        "route": f"{f.origin_airport_iata or '?'} ➔ {f.destination_airport_iata or '?'}"
-                    })
+            results = []
+            for dist, f in filtered[:limit]:
+                results.append({
+                    "flight_number": f.number,
+                    "callsign": f.callsign,
+                    "aircraft_model": f.aircraft_code,
+                    "province": matched_province,
+                    "distance_km": dist,
+                    "latitude": f.latitude,
+                    "longitude": f.longitude,
+                    "altitude_feet": f.altitude,
+                    "altitude_meters": feet_to_meters(f.altitude),
+                    "ground_speed_kmh": knots_to_kmh(f.ground_speed),
+                    "heading": f.heading,
+                    "route": f"{f.origin_airport_iata or '?'} ➔ {f.destination_airport_iata or '?'}"
+                })
 
-                prov_info = geo_engine.get_province_info(matched_province)
-                return {
-                    "status": "success",
-                    "source": "flightradar24_live_radar",
-                    "applied_province": matched_province,
-                    "province_details": {
-                        "name": prov_info["name"],
-                        "plate": prov_info["plate_code"],
-                        "geographic_region": prov_info["region"],
-                        "center_coords": prov_info["center"],
-                        "summary": prov_info["summary"]
-                    } if prov_info else None,
-                    "min_speed_kmh": min_speed_kmh,
-                    "total_flights_found": len(filtered),
-                    "returned_flights": results
-                }
+            return {
+                "status": "success",
+                "source": "flightradar24_live_radar",
+                "applied_province": matched_province,
+                "province_details": {
+                    "name": prov_info["name"],
+                    "plate": prov_info["plate_code"],
+                    "geographic_region": prov_info["region"],
+                    "center_coords": prov_info["center"],
+                    "summary": prov_info["summary"]
+                },
+                "min_speed_kmh": min_speed_kmh,
+                "total_flights_found": len(filtered),
+                "returned_flights": results
+            }
 
-    # 2. Fall back to national/regional preset bounding boxes (e.g. TR, Marmara, Aegean)
+    # 2. Check national or regional preset bounding boxes (e.g. TR, Marmara, Aegean)
     geo_target = raw_geo.upper().replace("İ", "I")
-    if geo_target:
-        if geo_target in GEO_REGIONS:
-            geo_filter = GEO_REGIONS[geo_target]
-            region_name = geo_filter.get("name", geo_target)
-        elif "TURK" in geo_target or geo_target == "TR":
-            geo_filter = GEO_REGIONS["TR"]
-            region_name = "Türkiye"
+    geo_filter = GEO_REGIONS.get(geo_target)
+    if not geo_filter:
+        geo_filter = GEO_REGIONS["TR"]
+    region_name = geo_filter.get("name", "Türkiye")
 
-    # Case A: Predefined Bounding Box (e.g. Turkey national borders)
-    if geo_filter and geo_filter.get("type") == "bbox":
-        bounds = geo_filter["bounds"]
-        try:
-            flights = fr_api.get_flights(bounds=bounds)
-        except Exception as e:
-            return {"status": "error", "message": f"Error during regional radar scan: {str(e)}"}
-
-        filtered = []
-        for f in flights:
-            spd_kmh = knots_to_kmh(f.ground_speed) or 0
-            if min_speed_kmh is not None and spd_kmh < min_speed_kmh:
-                continue
-            filtered.append(f)
-
-        # Sort by speed descending
-        filtered.sort(key=lambda x: knots_to_kmh(x.ground_speed) or 0, reverse=True)
-
-        results = []
-        for f in filtered[:limit]:
-            results.append({
-                "flight_number": f.number,
-                "callsign": f.callsign,
-                "aircraft_model": f.aircraft_code,
-                "latitude": f.latitude,
-                "longitude": f.longitude,
-                "altitude_feet": f.altitude,
-                "altitude_meters": feet_to_meters(f.altitude),
-                "ground_speed_kmh": knots_to_kmh(f.ground_speed),
-                "heading": f.heading,
-                "route": f"{f.origin_airport_iata or '?'} ➔ {f.destination_airport_iata or '?'}"
-            })
-
-        return {
-            "status": "success",
-            "source": "flightradar24_live_radar",
-            "applied_region": region_name,
-            "min_speed_kmh": min_speed_kmh,
-            "total_flights_found": len(filtered),
-            "returned_flights": results
-        }
-
-    # Case B: Radial coordinates (either from preset e.g. Ankara or explicit lat/lon)
-    center_lat = geo_filter["lat"] if (geo_filter and geo_filter.get("type") == "radial") else latitude
-    center_lon = geo_filter["lon"] if (geo_filter and geo_filter.get("type") == "radial") else longitude
-    target_radius = geo_filter["radius_km"] if (geo_filter and geo_filter.get("type") == "radial") else (radius_km or 100.0)
-
-    if center_lat is None or center_lon is None:
-        return {"status": "error", "message": "Please specify latitude/longitude or a valid region/country (e.g. 'TR', 'Ankara', 'Istanbul')."}
-
-    lat_deg_delta = (target_radius / 111.0) * 1.15
-    lon_deg_delta = (target_radius / (111.0 * max(0.1, math.cos(math.radians(center_lat))))) * 1.15
-
-    bounds = f"{center_lat + lat_deg_delta},{center_lat - lat_deg_delta},{center_lon - lon_deg_delta},{center_lon + lon_deg_delta}"
-
+    bounds = geo_filter["bounds"]
     try:
         flights = fr_api.get_flights(bounds=bounds)
     except Exception as e:
         return {"status": "error", "message": f"Error during regional radar scan: {str(e)}"}
 
-    flights_in_radius = []
+    filtered = []
     for f in flights:
-        dist = calculate_haversine_distance(center_lat, center_lon, f.latitude, f.longitude)
-        if dist <= target_radius:
-            spd_kmh = knots_to_kmh(f.ground_speed) or 0
-            if min_speed_kmh is not None and spd_kmh < min_speed_kmh:
-                continue
-            flights_in_radius.append((dist, f))
+        spd_kmh = knots_to_kmh(f.ground_speed) or 0
+        if min_speed_kmh is not None and spd_kmh < min_speed_kmh:
+            continue
+        filtered.append(f)
 
-    if min_speed_kmh is not None:
-        flights_in_radius.sort(key=lambda x: knots_to_kmh(x[1].ground_speed) or 0, reverse=True)
-    else:
-        flights_in_radius.sort(key=lambda x: x[0])
+    # Sort by speed descending
+    filtered.sort(key=lambda x: knots_to_kmh(x.ground_speed) or 0, reverse=True)
 
     results = []
-    for dist, f in flights_in_radius[:limit]:
+    for f in filtered[:limit]:
         results.append({
             "flight_number": f.number,
             "callsign": f.callsign,
             "aircraft_model": f.aircraft_code,
-            "distance_km": dist,
+            "latitude": f.latitude,
+            "longitude": f.longitude,
             "altitude_feet": f.altitude,
             "altitude_meters": feet_to_meters(f.altitude),
             "ground_speed_kmh": knots_to_kmh(f.ground_speed),
@@ -449,19 +382,14 @@ def get_flights_over_region(
             "route": f"{f.origin_airport_iata or '?'} ➔ {f.destination_airport_iata or '?'}"
         })
 
-    resp = {
+    return {
         "status": "success",
         "source": "flightradar24_live_radar",
-        "center_coordinates": {"latitude": center_lat, "longitude": center_lon},
-        "radius_km": target_radius,
-        "total_flights_in_radius": len(flights_in_radius),
+        "applied_region": region_name,
+        "min_speed_kmh": min_speed_kmh,
+        "total_flights_found": len(filtered),
         "returned_flights": results
     }
-    if region_name:
-        resp["applied_region"] = region_name
-    if min_speed_kmh:
-        resp["min_speed_kmh"] = min_speed_kmh
-    return resp
 
 
 def get_most_tracked_flights(limit: int = 10) -> Dict[str, Any]:

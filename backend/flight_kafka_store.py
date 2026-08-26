@@ -157,20 +157,16 @@ class FlightKafkaStore:
     def query_flights(
         self,
         query: Optional[str] = None,
+        region: Optional[str] = None,
         airline: Optional[str] = None,
         min_speed_kmh: Optional[float] = None,
-        max_speed_kmh: Optional[float] = None,
-        latitude: Optional[float] = None,
-        longitude: Optional[float] = None,
-        radius_km: Optional[float] = None,
-        country: Optional[str] = None,
-        region: Optional[str] = None,
         min_altitude_feet: Optional[float] = None,
         get_stats: bool = False,
-        limit: int = 15
+        limit: int = 15,
+        **kwargs
     ) -> Dict[str, Any]:
         """Unified multi-filter query method for the Kafka telemetry buffer.
-        Evaluates all provided constraints (speed, location, country, region, airline, query, stats) simultaneously in a single pass.
+        Evaluates all provided constraints (speed, region/province, airline, query, stats) simultaneously in a single pass.
         """
         # If statistics requested, return stream summary
         if get_stats:
@@ -178,13 +174,11 @@ class FlightKafkaStore:
 
         clean_q = query.strip().upper() if query and str(query).strip() else None
         clean_airline = airline.strip().upper() if airline and str(airline).strip() else None
-        has_coords = (latitude is not None and longitude is not None)
-        effective_radius = float(radius_km) if radius_km is not None else (150.0 if has_coords else None)
 
         # Resolve country or region preset if specified
         geo_filter = None
         region_name = None
-        raw_geo = (region or country or "").strip()
+        raw_geo = (region or kwargs.get("country") or "").strip()
 
         # 1. First check if raw_geo corresponds to one of Turkey's 81 provinces (Exact GeoJSON Polygon)
         if raw_geo:
@@ -217,10 +211,8 @@ class FlightKafkaStore:
             f_lat = telemetry.get("latitude")
             f_lon = telemetry.get("longitude")
 
-            # 1. Speed Filters
+            # 1. Speed Filter
             if min_speed_kmh is not None and (spd is None or spd < min_speed_kmh):
-                continue
-            if max_speed_kmh is not None and (spd is None or spd > max_speed_kmh):
                 continue
 
             # 2. Altitude Filter
@@ -263,17 +255,6 @@ class FlightKafkaStore:
                     if not (geo_filter["min_lat"] <= f_lat <= geo_filter["max_lat"] and
                             geo_filter["min_lon"] <= f_lon <= geo_filter["max_lon"]):
                         continue
-                elif geo_filter["type"] == "radial":
-                    dist = calculate_haversine_distance(geo_filter["lat"], geo_filter["lon"], f_lat, f_lon)
-                    if dist > geo_filter["radius_km"]:
-                        continue
-
-            elif has_coords:
-                if f_lat is None or f_lon is None:
-                    continue
-                dist = calculate_haversine_distance(latitude, longitude, f_lat, f_lon)
-                if effective_radius is not None and dist > effective_radius:
-                    continue
 
             # Record match
             item = dict(f)
@@ -283,13 +264,8 @@ class FlightKafkaStore:
                 item["filtered_region"] = region_name
             matched.append(item)
 
-        # Smart Sorting:
-        # If coordinates provided without specific speed filter, sort by distance
-        if (has_coords or (geo_filter and geo_filter.get("type") == "radial")) and min_speed_kmh is None:
-            matched.sort(key=lambda x: x.get("distance_to_center_km", 999999))
-        else:
-            # Default sort by ground speed descending
-            matched.sort(key=lambda x: x.get("telemetry", {}).get("ground_speed_kmh", 0) or 0, reverse=True)
+        # Sort by ground speed descending
+        matched.sort(key=lambda x: x.get("telemetry", {}).get("ground_speed_kmh", 0) or 0, reverse=True)
 
         resp = {
             "status": "success",
@@ -326,25 +302,6 @@ class FlightKafkaStore:
             "source": "kafka_in_memory_stream",
             "message": f"No active flight record found in Kafka stream for '{query}' (Total indexed: {len(self.flights)} flights)."
         }
-
-    def find_by_airline(self, airline_code: str, limit: int = 15) -> Dict[str, Any]:
-        """Filters flights in Kafka memory belonging to a specific airline (IATA/ICAO e.g. THY, TK, PGT, DLH)."""
-        res = self.query_flights(airline=airline_code, limit=limit)
-        res["airline_code"] = airline_code.strip().upper()
-        return res
-
-    def find_nearby(self, latitude: float, longitude: float, radius_km: float = 150.0, limit: int = 15) -> Dict[str, Any]:
-        """Finds flights within a specified radius (km) around center coordinates, ordered by distance."""
-        res = self.query_flights(latitude=latitude, longitude=longitude, radius_km=radius_km, limit=limit)
-        res["center"] = {"latitude": latitude, "longitude": longitude}
-        res["radius_km"] = radius_km
-        return res
-
-    def find_flights_above_speed(self, min_speed_kmh: float = 800.0, limit: int = 15) -> Dict[str, Any]:
-        """Filters high-speed / supersonic flights in the Kafka buffer exceeding specified ground speed (km/h)."""
-        res = self.query_flights(min_speed_kmh=min_speed_kmh, limit=limit)
-        res["min_speed_kmh"] = min_speed_kmh
-        return res
 
     def get_telemetry_stats(self) -> Dict[str, Any]:
         """Calculates statistical summary across all flights in Kafka (speed, altitude, airlines)."""
@@ -400,9 +357,9 @@ if __name__ == "__main__":
     print(json.dumps(store.get_telemetry_stats(), indent=2, ensure_ascii=False))
 
     print("\n--- 2. FLIGHTS ABOVE 850 KM/H ---")
-    fast = store.find_flights_above_speed(min_speed_kmh=850.0, limit=3)
+    fast = store.query_flights(min_speed_kmh=850.0, limit=3)
     print(json.dumps(fast, indent=2, ensure_ascii=False))
 
-    print("\n--- 3. FLIGHTS NEAR ISTANBUL (41.0082, 28.9784) ---")
-    nearby = store.find_nearby(41.0082, 28.9784, radius_km=300, limit=2)
-    print(json.dumps(nearby, indent=2, ensure_ascii=False))
+    print("\n--- 3. FLIGHTS IN ERZURUM PROVINCE ---")
+    erz = store.query_flights(region="Erzurum", limit=3)
+    print(json.dumps(erz, indent=2, ensure_ascii=False))

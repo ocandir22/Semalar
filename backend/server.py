@@ -147,32 +147,14 @@ def search_airline_flights(airline_code: str, limit: int = 15) -> Dict[str, Any]
 @mcp_server.tool()
 @audit_tool("get_flights_over_region")
 def get_flights_over_region(
-    latitude: Optional[float] = None,
-    longitude: Optional[float] = None,
-    radius_km: float = 100.0,
-    country: str = "",
-    region: str = "",
+    region: str = "Turkey",
     min_speed_kmh: Optional[float] = None,
-    limit: int = 15
+    limit: int = 15,
+    **kwargs
 ) -> Dict[str, Any]:
-    """Finds live flights flying within a given radius (km) around coordinates, or within official national/regional airspace borders (e.g. 'TR' / 'Turkey', 'Ankara', 'Istanbul').
-    Supports combined speed filtering directly from FlightRadar24 live radar.
-    
-    Args:
-        latitude: Latitude in decimal degrees (e.g. 41.0082 for Istanbul).
-        longitude: Longitude in decimal degrees (e.g. 28.9784 for Istanbul).
-        radius_km: Search radius in kilometers (default: 100 km).
-        country: Official country code or name to restrict airspace within exact borders (e.g. 'TR' or 'Turkey').
-        region: Geographic region or major city (e.g. 'Turkey', 'Ankara', 'Istanbul', 'Marmara', 'Aegean', 'Black Sea').
-        min_speed_kmh: Minimum ground speed filter in km/h (optional, e.g. 800 for high-speed flights).
-        limit: Maximum number of flights to return (default: 15).
-    """
+    """Finds live flights within official 81-province boundaries or national/regional macro-zones (e.g. 'TR' / 'Turkey', 'Erzurum', 'Istanbul'). Supports speed filtering."""
     return fetch_flights_over_region(
-        latitude=latitude,
-        longitude=longitude,
-        radius_km=radius_km,
-        country=country,
-        region=region,
+        region=region or kwargs.get("country", "Turkey"),
         min_speed_kmh=min_speed_kmh,
         limit=limit
     )
@@ -208,45 +190,22 @@ def get_airport_info(airport_code: str) -> Dict[str, Any]:
 @audit_tool("query_kafka_stream")
 def query_kafka_stream(
     query: str = "",
+    region: str = "",
     airline: str = "",
     min_speed_kmh: Optional[float] = None,
-    max_speed_kmh: Optional[float] = None,
-    latitude: Optional[float] = None,
-    longitude: Optional[float] = None,
-    radius_km: Optional[float] = None,
-    country: str = "",
-    region: str = "",
     min_altitude_feet: Optional[float] = None,
     get_stats: bool = False,
-    limit: int = 15
+    limit: int = 15,
+    **kwargs
 ) -> Dict[str, Any]:
     """Unified multi-filter query tool for the Apache Kafka live flight telemetry stream.
-    Supports compound queries combining ground speed, country/region boundaries, coordinates/radius, airline, flight number, and stream statistics simultaneously.
-    
-    Args:
-        query: Specific flight number (e.g. 'TK10'), callsign ('THY10'), or registration ('TC-LJA').
-        airline: Airline code or prefix (e.g. 'THY', 'TK', 'PGT', 'DLH').
-        min_speed_kmh: Minimum ground speed filter in km/h (e.g. 800, 900 for fast/supersonic flights).
-        max_speed_kmh: Maximum ground speed filter in km/h.
-        latitude: Latitude coordinate for regional airspace scanning (e.g. 41.0082 for Istanbul).
-        longitude: Longitude coordinate for regional airspace scanning (e.g. 28.9784 for Istanbul).
-        radius_km: Search radius around coordinates in kilometers (default: 150 km).
-        country: Official country code or name to restrict airspace within exact borders (e.g. 'TR' or 'Turkey').
-        region: Geographic region or major city (e.g. 'Turkey', 'Ankara', 'Istanbul', 'Marmara', 'Aegean', 'Black Sea').
-        min_altitude_feet: Minimum altitude filter in feet.
-        get_stats: If true, returns overall stream telemetry statistics (max/avg speed, altitude, airlines).
-        limit: Maximum number of records to return (default: 15).
+    Supports compound queries combining ground speed, province/region boundaries, airline, flight number, and stream statistics simultaneously.
     """
     return kafka_store.query_flights(
         query=query,
+        region=region or kwargs.get("country", ""),
         airline=airline,
         min_speed_kmh=min_speed_kmh,
-        max_speed_kmh=max_speed_kmh,
-        latitude=latitude,
-        longitude=longitude,
-        radius_km=radius_km,
-        country=country,
-        region=region,
         min_altitude_feet=min_altitude_feet,
         get_stats=get_stats,
         limit=limit

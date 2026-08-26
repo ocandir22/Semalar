@@ -151,16 +151,12 @@ LOCAL_MCP_DEFINITIONS = [
     },
     {
         "name": "get_flights_over_region",
-        "description": "Finds live flights flying within national or regional airspace (e.g. Turkey / 'TR', 'Ankara', 'Istanbul') or around specific geographic coordinates on FlightRadar24. Supports speed filtering.",
+        "description": "Finds live flights flying within national or regional airspace (e.g. Turkey / 'TR', 'Ankara', 'Istanbul') on FlightRadar24. Supports speed filtering.",
         "parameters": {
             "type": "object",
             "properties": {
-                "country": {"type": "string", "description": "Official country code or name (e.g. 'TR' or 'Turkey')"},
                 "region": {"type": "string", "description": "Target province or region name. As an intelligent assistant, resolve any colloquial user phrasing (e.g. 'Palandöken', 'Erzurum kenti/şehri', 'Dadaşlar diyarı', 'Boğaz', 'Kordon') to the official province name (e.g. 'Erzurum', 'İstanbul', 'İzmir') or macro-region ('MARMARA', 'EGE', 'TR'). The backend automatically evaluates exact 81-province boundary polygons."},
                 "min_speed_kmh": {"type": "number", "description": "Minimum ground speed filter in km/h. Map expressions like 'hızlı uçaklar', 'ses hızına yakın', 'süpersonik' to appropriate values (e.g. 800 or 900)."},
-                "latitude": {"type": "number", "description": "Center latitude in decimal degrees (e.g. 41.0082)"},
-                "longitude": {"type": "number", "description": "Center longitude in decimal degrees (e.g. 28.9784)"},
-                "radius_km": {"type": "number", "description": "Search radius in kilometers (default: 100)"},
                 "limit": {"type": "integer", "description": "Maximum number of flights to return (default: 15)"}
             }
         }
@@ -188,19 +184,14 @@ LOCAL_MCP_DEFINITIONS = [
     },
     {
         "name": "query_kafka_stream",
-        "description": "Unified multi-filter query tool for the Apache Kafka live flight telemetry stream. Supports compound queries combining ground speed, country/region boundaries, coordinates/radius, airline, flight number, and stream statistics simultaneously.",
+        "description": "Unified multi-filter query tool for the Apache Kafka live flight telemetry stream. Supports compound queries combining ground speed, province/region boundaries, airline, flight number, and stream statistics simultaneously.",
         "parameters": {
             "type": "object",
             "properties": {
                 "query": {"type": "string", "description": "Specific flight number (e.g. 'TK10'), callsign ('THY10'), or registration ('TC-LJA')"},
+                "region": {"type": "string", "description": "Target province or region name. As an intelligent assistant, resolve any colloquial user phrasing (e.g. 'Palandöken', 'Erzurum kenti/şehri', 'Dadaşlar diyarı', 'Boğaz', 'Kordon', 'Başkent') to the official Turkish province name (e.g. 'Erzurum', 'İstanbul', 'İzmir', 'Ankara') or macro-region ('MARMARA', 'EGE', 'TR'). The backend automatically evaluates exact 81-province boundary polygons."},
                 "airline": {"type": "string", "description": "Airline code. Map colloquial airline names (e.g. 'Türk Hava Yolları' -> 'THY', 'Pegasus' -> 'PGT', 'AJet' -> 'TKJ' or 'VF', 'Lufthansa' -> 'DLH', 'SunExpress' -> 'SXS')."},
                 "min_speed_kmh": {"type": "number", "description": "Minimum ground speed filter in km/h. Map expressions like 'hızlı uçaklar', 'ses hızına yakın', 'süpersonik' to appropriate values (e.g. 800 or 900)."},
-                "max_speed_kmh": {"type": "number", "description": "Maximum ground speed filter in km/h"},
-                "country": {"type": "string", "description": "Country code or name to restrict flights strictly within national borders (e.g. 'TR' or 'Turkey')"},
-                "region": {"type": "string", "description": "Target province or region name. As an intelligent assistant, resolve any colloquial user phrasing (e.g. 'Palandöken', 'Erzurum kenti/şehri', 'Dadaşlar diyarı', 'Boğaz', 'Kordon', 'Başkent') to the official Turkish province name (e.g. 'Erzurum', 'İstanbul', 'İzmir', 'Ankara') or macro-region ('MARMARA', 'EGE', 'TR'). The backend automatically evaluates exact 81-province boundary polygons."},
-                "latitude": {"type": "number", "description": "Center latitude in decimal degrees for custom coordinate scan"},
-                "longitude": {"type": "number", "description": "Center longitude in decimal degrees for custom coordinate scan"},
-                "radius_km": {"type": "number", "description": "Search radius around coordinates in kilometers (default: 150)"},
                 "min_altitude_feet": {"type": "number", "description": "Minimum altitude filter in feet. Convert user metric requests like '10 bin metre üzeri' (~32,800 ft) to feet."},
                 "get_stats": {"type": "boolean", "description": "Set to true to retrieve overall Kafka stream statistics (max/avg speed, altitude, airline count)"},
                 "limit": {"type": "integer", "description": "Maximum number of flights to return (default: 15)"}
@@ -234,11 +225,9 @@ KAFKA_SYSTEM_INSTRUCTION = (
     "💡 HOW TO USE 'query_kafka_stream':\n"
     "• Single flight info / search: pass query='TK10' or registration.\n"
     "• High-speed / supersonic filtering: pass min_speed_kmh=800 or 900.\n"
-    "• Turkey national airspace: pass country='TR' or region='Turkey' (strictly confines results within Turkish borders!).\n"
-    "• 81 Turkish Provinces (Exact GeoJSON Borders): You handle natural language entity resolution! If the user says 'Palandöken', 'Erzurum kenti/şehri', 'Dadaşlar diyarı', 'Boğaz', 'Kordon', 'Başkent' or any landmark/district, resolve it to the canonical province name (e.g. region='Erzurum', region='Ankara', region='İstanbul'). The Python backend calculates the exact polygon boundary with sub-millisecond ray-casting!\n"
+    "• 81 Turkish Provinces & Regions: You handle natural language entity resolution! If the user says 'Palandöken', 'Erzurum kenti/şehri', 'Dadaşlar diyarı', 'Boğaz', 'Kordon', 'Başkent' or any landmark/district, resolve it to the canonical province name (e.g. region='Erzurum', region='Ankara', region='İstanbul') or region (region='TR', region='MARMARA'). The Python backend calculates the exact polygon boundary with sub-millisecond ray-casting!\n"
     "• Airline colloquialisms: Resolve 'Türk Hava Yolları' -> airline='THY', 'Pegasus' -> airline='PGT', 'AJet' -> airline='TKJ', etc.\n"
     "• Metric to imperial conversion: Convert user metric requests (e.g. '10 bin metre üstü' -> min_altitude_feet=32800).\n"
-    "• Custom Coordinates / Non-Turkish Locations: If a user specifies custom coordinates or a non-provincial landmark, pass latitude, longitude, and radius_km=100.\n"
     "• COMPOUND QUERIES: Combine any parameters! (e.g. Erzurum + min_speed_kmh=800 -> pass region='Erzurum', min_speed_kmh=800).\n"
     "• Kafka stream statistics: pass get_stats=true.\n\n"
     "📌 RULES:\n"
@@ -252,10 +241,8 @@ LIVE_SYSTEM_INSTRUCTION = (
     "To answer questions, you MUST strictly use ONLY the provided LIVE FLIGHTRADAR24 MCP TOOLS:\n"
     "1. Flight Info / Location / Altitude / Speed: Call 'get_flight_info'.\n"
     "2. Airline Active Airborne Flights: Call 'search_airline_flights' (resolve 'Türk Hava Yolları' -> 'THY', etc.).\n"
-    "3. Regional / National Airspace Radar: Call 'get_flights_over_region'.\n"
-    "   • For Turkey national airspace: pass country='TR' or region='Turkey' (and min_speed_kmh if requested).\n"
-    "   • For 81 Turkish Provinces: Resolve user terms ('Palandöken', 'Erzurum kenti', 'Başkent', etc.) to the canonical province name (e.g. region='Erzurum', region='Ankara'). The backend automatically evaluates exact GeoJSON polygon borders!\n"
-    "   • For custom coordinates / landmarks: pass latitude, longitude, and radius_km.\n"
+    "3. Regional Airspace Radar: Call 'get_flights_over_region'.\n"
+    "   • For 81 Turkish Provinces & Regions: Resolve user terms ('Palandöken', 'Erzurum kenti', 'Başkent', 'Türkiye geneli', etc.) to the canonical province name (e.g. region='Erzurum', region='Ankara', region='TR'). The backend automatically evaluates exact GeoJSON polygon borders!\n"
     "4. Top Most-Tracked Flights: Call 'get_most_tracked_flights'.\n"
     "5. Airport Details: Call 'get_airport_info'.\n\n"
     "📌 RULES:\n"
