@@ -249,25 +249,6 @@ def search_airline_flights(airline_code: str, limit: int = 15) -> Dict[str, Any]
     }
 
 
-# Geographic presets and national airspace bounding boxes
-GEO_REGIONS: Dict[str, Dict[str, Any]] = {
-    # Turkey National Airspace Bounding Box (~35.8° - 42.2° N, ~25.6° - 44.8° E)
-    "TR": {"type": "bbox", "bounds": "42.2,35.8,25.6,44.8", "name": "Türkiye"},
-    "TURKEY": {"type": "bbox", "bounds": "42.2,35.8,25.6,44.8", "name": "Türkiye"},
-    "TURKIYE": {"type": "bbox", "bounds": "42.2,35.8,25.6,44.8", "name": "Türkiye"},
-    "TÜRKIYE": {"type": "bbox", "bounds": "42.2,35.8,25.6,44.8", "name": "Türkiye"},
-    # Major Geographic Regions
-    "MARMARA": {"type": "bbox", "bounds": "42.1,40.0,26.0,31.0", "name": "Marmara Bölgesi"},
-    "EGE": {"type": "bbox", "bounds": "40.2,36.5,26.0,30.2", "name": "Ege Bölgesi"},
-    "AEGEAN": {"type": "bbox", "bounds": "40.2,36.5,26.0,30.2", "name": "Ege Bölgesi"},
-    "AKDENIZ": {"type": "bbox", "bounds": "38.0,36.0,29.0,36.5", "name": "Akdeniz Bölgesi"},
-    "MEDITERRANEAN": {"type": "bbox", "bounds": "38.0,36.0,29.0,36.5", "name": "Akdeniz Bölgesi"},
-    "KARADENIZ": {"type": "bbox", "bounds": "42.2,40.5,31.0,42.0", "name": "Karadeniz Bölgesi"},
-    "BLACK_SEA": {"type": "bbox", "bounds": "42.2,40.5,31.0,42.0", "name": "Karadeniz Bölgesi"},
-    "IC_ANADOLU": {"type": "bbox", "bounds": "40.5,37.5,30.5,37.0", "name": "İç Anadolu Bölgesi"},
-}
-
-
 def get_flights_over_region(
     region: str = "Turkey",
     min_speed_kmh: Optional[float] = None,
@@ -340,14 +321,10 @@ def get_flights_over_region(
                 "returned_flights": results
             }
 
-    # 2. Check national or regional preset bounding boxes (e.g. TR, Marmara, Aegean)
-    geo_target = raw_geo.upper().replace("İ", "I")
-    geo_filter = GEO_REGIONS.get(geo_target)
-    if not geo_filter:
-        geo_filter = GEO_REGIONS["TR"]
-    region_name = geo_filter.get("name", "Türkiye")
-
-    bounds = geo_filter["bounds"]
+    # 2. Check national or regional macro bounding boxes via core geo_engine (e.g. TR, Marmara, Aegean)
+    macro_filter = geo_engine.resolve_macro_region(raw_geo) or geo_engine.resolve_macro_region("TR")
+    region_name = macro_filter.get("name", "Türkiye")
+    bounds = macro_filter["bounds"]
     try:
         flights = fr_api.get_flights(bounds=bounds)
     except Exception as e:
