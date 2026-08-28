@@ -74,19 +74,18 @@ Semalar/
 │   ├── core/                  # Shared core infrastructure
 │   │   ├── geo_service.py     # 81-Province GeoJSON boundary & ray-casting PIP engine
 │   │   ├── audit_logger.py    # Real-time Kafka 'mcp-requests' audit producer & ring buffer
-│   │   ├── llm_client.py      # Multi-provider LLM caller (Groq/Gemini/OpenAI/Ollama) & observability
+│   │   ├── llm_client.py      # Multi-provider LLM caller (Groq/Gemini/OpenAI) & Thinking timeline
 │   │   └── data/              # tr-cities.json & tr-provinces-catalog.json
 │   ├── project_kafka/         # Apache Kafka Telemetry Cockpit
 │   │   ├── flight_collector.py# FlightRadar24 live scraper & normalizer
 │   │   ├── flight_producer.py # Real-time streaming Kafka producer daemon (15s cycle)
 │   │   ├── flight_kafka_store.py # In-memory Kafka stream consumer, indexer & polygon filter
 │   │   ├── kafka_agent.py     # FastMCP-powered Telemetry AI Agent
-│   │   ├── kafka_cli.py       # Dedicated Kafka Cockpit terminal CLI
-│   │   └── kafka_server.py    # Standalone Kafka Cockpit ASGI & FastMCP Server (Port 8001)
-│   ├── server.py              # Central Starlette ASGI & FastMCP Server (Port 8000)
+│   │   └── kafka_cli.py       # Dedicated Kafka Cockpit terminal CLI
+│   ├── server.py              # Central Unified Starlette ASGI & FastMCP Server (Port 8000)
 │   └── test_flight_mcp.py     # Automated MCP protocol verification script
 ├── frontend/
-│   ├── kafka.html             # Apache Kafka Telemetry Cockpit & AI Chat UI
+│   ├── kafka.html             # Apache Kafka Telemetry Cockpit & AI Thinking Chat UI
 │   └── css/
 │       └── style.css          # Dark-mode glassmorphic aviation HUD design system
 ├── docker-compose.yml         # Apache Kafka (KRaft mode) & Kafka UI stack
