@@ -10,8 +10,10 @@ import unicodedata
 import re
 from typing import Optional, Dict, Any, List, Tuple
 
-# Path to tr-cities.json
+# Paths to geo data (checks core/data first, then backend/data)
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
+if not os.path.exists(DATA_DIR):
+    DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data")
 GEOJSON_FILE = os.path.join(DATA_DIR, "tr-cities.json")
 
 
@@ -134,6 +136,26 @@ PROVINCE_ALIASES: Dict[str, str] = {
     "ADAPAZARI": "Sakarya",
     "ANTAKYA": "Hatay",
     "DERSIM": "Tunceli",
+}
+
+# National airspace and macro geographic regions
+MACRO_REGIONS: Dict[str, Dict[str, Any]] = {
+    # Turkey National Airspace (~35.8° - 42.2° N, ~25.6° - 44.8° E)
+    "TR": {"type": "bbox", "min_lat": 35.8, "max_lat": 42.2, "min_lon": 25.6, "max_lon": 44.8, "bounds": "42.2,35.8,25.6,44.8", "name": "Türkiye"},
+    "TURKEY": {"type": "bbox", "min_lat": 35.8, "max_lat": 42.2, "min_lon": 25.6, "max_lon": 44.8, "bounds": "42.2,35.8,25.6,44.8", "name": "Türkiye"},
+    "TURKIYE": {"type": "bbox", "min_lat": 35.8, "max_lat": 42.2, "min_lon": 25.6, "max_lon": 44.8, "bounds": "42.2,35.8,25.6,44.8", "name": "Türkiye"},
+    "TÜRKIYE": {"type": "bbox", "min_lat": 35.8, "max_lat": 42.2, "min_lon": 25.6, "max_lon": 44.8, "bounds": "42.2,35.8,25.6,44.8", "name": "Türkiye"},
+    # 7 Geographic Regions of Turkey
+    "MARMARA": {"type": "bbox", "min_lat": 40.0, "max_lat": 42.1, "min_lon": 26.0, "max_lon": 31.0, "bounds": "42.1,40.0,26.0,31.0", "name": "Marmara Bölgesi"},
+    "EGE": {"type": "bbox", "min_lat": 36.5, "max_lat": 40.2, "min_lon": 26.0, "max_lon": 30.2, "bounds": "40.2,36.5,26.0,30.2", "name": "Ege Bölgesi"},
+    "AEGEAN": {"type": "bbox", "min_lat": 36.5, "max_lat": 40.2, "min_lon": 26.0, "max_lon": 30.2, "bounds": "40.2,36.5,26.0,30.2", "name": "Ege Bölgesi"},
+    "AKDENIZ": {"type": "bbox", "min_lat": 36.0, "max_lat": 38.0, "min_lon": 29.0, "max_lon": 36.5, "bounds": "38.0,36.0,29.0,36.5", "name": "Akdeniz Bölgesi"},
+    "MEDITERRANEAN": {"type": "bbox", "min_lat": 36.0, "max_lat": 38.0, "min_lon": 29.0, "max_lon": 36.5, "bounds": "38.0,36.0,29.0,36.5", "name": "Akdeniz Bölgesi"},
+    "KARADENIZ": {"type": "bbox", "min_lat": 40.5, "max_lat": 42.2, "min_lon": 31.0, "max_lon": 42.0, "bounds": "42.2,40.5,31.0,42.0", "name": "Karadeniz Bölgesi"},
+    "BLACK_SEA": {"type": "bbox", "min_lat": 40.5, "max_lat": 42.2, "min_lon": 31.0, "max_lon": 42.0, "bounds": "42.2,40.5,31.0,42.0", "name": "Karadeniz Bölgesi"},
+    "IC_ANADOLU": {"type": "bbox", "min_lat": 37.5, "max_lat": 40.5, "min_lon": 30.5, "max_lon": 37.0, "bounds": "40.5,37.5,30.5,37.0", "name": "İç Anadolu Bölgesi"},
+    "DOGU_ANADOLU": {"type": "bbox", "min_lat": 37.0, "max_lat": 42.0, "min_lon": 38.0, "max_lon": 44.8, "bounds": "42.0,37.0,38.0,44.8", "name": "Doğu Anadolu Bölgesi"},
+    "GUNEYDOGU_ANADOLU": {"type": "bbox", "min_lat": 36.5, "max_lat": 38.5, "min_lon": 36.5, "max_lon": 43.0, "bounds": "38.5,36.5,36.5,43.0", "name": "Güneydoğu Anadolu Bölgesi"},
 }
 
 
@@ -410,6 +432,43 @@ class TurkeyGeoEngine:
                 "center": p["center"]
             })
         return results
+
+    def resolve_macro_region(self, region_str: Optional[str]) -> Optional[Dict[str, Any]]:
+        """Resolves region string to macro-region bounding box (e.g. 'Marmara', 'Ege', 'TR')."""
+        if not region_str:
+            return None
+        norm = _normalize_key(region_str.strip()).replace(" ", "_")
+        if norm in MACRO_REGIONS:
+            return MACRO_REGIONS[norm]
+        if "TURK" in norm or norm == "TR":
+            return MACRO_REGIONS["TR"]
+        return None
+
+    def resolve_geo_filter(self, query_str: Optional[str]) -> Optional[Dict[str, Any]]:
+        """
+        Unified geographical filter resolver:
+        1. Checks for 81 Turkish Provinces (Exact GeoJSON polygon & bounding box)
+        2. Falls back to Macro Geographic Regions (Marmara, Ege, Karadeniz, TR)
+        """
+        if not query_str:
+            return None
+        # Check province first
+        matched_prov = self.resolve_province_name(query_str)
+        if matched_prov:
+            prov_info = self.get_province_info(matched_prov)
+            return {
+                "type": "polygon",
+                "province": matched_prov,
+                "name": matched_prov,
+                "center": prov_info.get("center") if prov_info else None,
+                "bbox": prov_info.get("bounds") if prov_info else None,
+                "summary": prov_info.get("summary") if prov_info else ""
+            }
+        # Fall back to macro region
+        macro = self.resolve_macro_region(query_str)
+        if macro:
+            return macro
+        return None
 
 
 # Global singleton instance

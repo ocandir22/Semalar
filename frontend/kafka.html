@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Semalar — 2. Proje: Apache Kafka 1200 Telemetri & AI Chat Asistanı</title>
-    <meta name="description" content="Apache Kafka 1200 uçaklık telemetri havuzu, yapay zeka sohbeti, hız filtreleri ve MCP canlı istek günlüğü.">
+    <title>Semalar — Apache Kafka Canlı Uçuş Telemetri Kokpiti & AI Asistanı</title>
+    <meta name="description" content="Apache Kafka canlı uçak telemetri akışı, yapay zeka kokpit asistanı, hız filtreleri ve MCP denetim günlüğü.">
     
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -14,26 +14,6 @@
     <!-- Cockpit Radar Design System -->
     <link rel="stylesheet" href="/static/css/style.css">
     <style>
-      .btn-switch-project {
-        background: rgba(239, 68, 68, 0.15);
-        color: #fca5a5;
-        border: 1.5px solid rgba(239, 68, 68, 0.4);
-        padding: 7px 16px;
-        border-radius: 9999px;
-        font-size: 12.5px;
-        font-weight: 700;
-        cursor: pointer;
-        text-decoration: none;
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        transition: all 0.2s ease;
-      }
-      .btn-switch-project:hover {
-        background: rgba(239, 68, 68, 0.3);
-        transform: translateY(-1px);
-        box-shadow: 0 0 15px rgba(239, 68, 68, 0.3);
-      }
       .btn-kafka-ui {
         background: rgba(245, 158, 11, 0.15);
         color: #fbbf24;
@@ -84,17 +64,13 @@
                 <div>
                     <div class="brand-title">
                         SEMALAR
-                        <span class="project-badge-tag">2. PROJE: KAFKA CANLI TÜRKİYE AKIŞI</span>
+                        <span class="project-badge-tag">APACHE KAFKA TELEMETRİ KOKPİTİ</span>
                     </div>
-                    <div class="brand-subtitle">FlightRadar24 ➔ Apache Kafka Canlı Akış, MCP Araçları & Yapay Zeka Kokpiti</div>
+                    <div class="brand-subtitle">FlightRadar24 ➔ Apache Kafka Canlı Akış, 81 İl Poligon Motoru & FastMCP Asistanı</div>
                 </div>
             </div>
 
             <div style="display: flex; align-items: center; gap: 10px;">
-                <a href="/" class="btn-switch-project" title="1. Projeye Geç (Canlı FlightRadar24 & AI Chat)">
-                    <span>🔴</span>
-                    <span>1. Proje Canlı Radara Git</span>
-                </a>
                 <a href="http://localhost:8080" target="_blank" class="btn-kafka-ui" title="Docker Kafka UI Paneline Git">
                     <span>📊</span>
                     <span>Kafka UI (8080)</span>
@@ -122,18 +98,21 @@
             <section class="chat-column">
                 <div class="chat-messages" id="chat-messages-container">
                     <div class="welcome-hero">
-                        <h2>⚡ 2. Proje: Apache Kafka 1200 Telemetri & AI Asistanı</h2>
+                        <h2>⚡ Apache Kafka Canlı Telemetri & AI Asistanı</h2>
                         <p>
-                            Bu modda yapay zeka sorularınızı <strong>Kafka 'live-flights' telemetri havuzundaki 1200 uçak</strong> ve 
-                            özel Kafka MCP araçlarını (hız filtreleri, bölgesel arama, istatistikler) kullanarak yanıtlar.
+                            Bu kokpitte yapay zeka sorularınızı <strong>Apache Kafka 'live-flights' telemetri akışı</strong>, 
+                            <strong>81 il sınır poligon motoru (Ray-Casting)</strong> ve 
+                            <strong>FastMCP araçları</strong> ile 0.3 milisaniyelik gecikmeyle analiz ederek yanıtlar.
                         </p>
                         
                         <div class="prompt-chips-container">
                             <button class="prompt-chip" data-query="Kafka akışında 900 km/s hızın üzerindeki en hızlı uçakları ve modellerini listele">🚀 900 km/s Üzeri Hızlı Uçaklar</button>
-                            <button class="prompt-chip" data-query="THY10 nolu uçak Kafka akışında var mı, irtifası ve hızı nedir?">📍 THY10 nerede?</button>
-                            <button class="prompt-chip" data-query="İstanbul (41.0082, 28.9784) semalarında 150 km yarıçapında uçan uçakları göster">🇹🇷 İstanbul Semaları (Kafka)</button>
+                            <button class="prompt-chip" data-query="Ankara semalarında 800 km/s hızın üzerindeki uçaklar ve modelleri nelerdir?">🇹🇷 Ankara Semaları</button>
+                            <button class="prompt-chip" data-query="Marmara Bölgesi ve İstanbul semalarındaki güncel uçuşları listele">🌊 Marmara / İstanbul Uçuşları</button>
+                            <button class="prompt-chip" data-query="Erzurum ve Doğu Anadolu semalarında şu an aktif uçuş var mı?">🏔️ Erzurum Semaları</button>
+                            <button class="prompt-chip" data-query="THY10 nolu uçak Kafka akışında var mı, irtifası, rotası ve hızı nedir?">📍 THY10 Uçuş Detayı</button>
                             <button class="prompt-chip" data-query="Kafka telemetri deposundaki ortalama hız, en yüksek irtifa ve toplam uçak istatistikleri nelerdir?">📊 Kafka Akış İstatistikleri</button>
-                            <button class="prompt-chip" data-query="Pegasus'un (PGT) Kafka havuzundaki havadaki uçaklarını listele">✈️ Pegasus Uçakları</button>
+                            <button class="prompt-chip" data-query="Pegasus'un (PGT) ve AJet'in Kafka havuzundaki havadaki uçaklarını listele">✈️ Pegasus & AJet Filosu</button>
                         </div>
                     </div>
 
@@ -143,7 +122,7 @@
                         <div class="message-sender-tag">⚡ Semalar Kafka Asistanı</div>
                         <div class="typing-radar">
                             <div class="radar-spinner"></div>
-                            <span>Apache Kafka 1200 telemetri akışı taranıyor...</span>
+                            <span>Apache Kafka canlı telemetri akışı taranıyor...</span>
                         </div>
                     </div>
                 </div>
@@ -151,7 +130,7 @@
                 <!-- CHAT INPUT -->
                 <div class="chat-input-container">
                     <div class="chat-input-wrapper">
-                        <input type="text" id="chat-input" class="chat-input" placeholder="Uçuş kodu (örn: TK10), hız sorgusu (örn: 900 km/s üstü) veya konum sorun..." autofocus>
+                        <input type="text" id="chat-input" class="chat-input" placeholder="Uçuş kodu (örn: TK10), il/bölge (örn: Ankara, Marmara), hız (örn: 900 km/s) veya filo sorun..." autofocus>
                     </div>
                     <button id="btn-send-chat" class="btn-send">
                         <span>Gönder</span>
@@ -168,7 +147,7 @@
                         <div class="nav-tabs-group" style="padding: 2px;">
                             <button class="nav-tab-btn active" id="tab-btn-flights" style="padding: 4px 10px; font-size: 11.5px;">
                                 <span>🛫</span>
-                                <span>Uçuş Havuzu (1200)</span>
+                                <span>Canlı Uçuşlar</span>
                             </button>
                             <button class="nav-tab-btn" id="tab-btn-logs" style="padding: 4px 10px; font-size: 11.5px;">
                                 <span>📋</span>
@@ -178,7 +157,7 @@
 
                         <div style="display: flex; gap: 6px;">
                             <button class="btn-icon" id="btn-sync-kafka" style="padding: 4px 8px; font-size: 11px;" title="Kafka'dan Belleğe Yeniden Çek">🔄 Senkronize</button>
-                            <button class="btn-icon" id="btn-produce-fresh" style="padding: 4px 8px; font-size: 11px; background: rgba(16, 185, 129, 0.15); color: #34d399; border-color: rgba(16, 185, 129, 0.3);" title="FlightRadar'dan 1200 Taze Veri Çek ve Kafka'ya Bas">
+                            <button class="btn-icon" id="btn-produce-fresh" style="padding: 4px 8px; font-size: 11px; background: rgba(16, 185, 129, 0.15); color: #34d399; border-color: rgba(16, 185, 129, 0.3);" title="FlightRadar24'ten Türkiye Semalarını Çek ve Kafka'ya Bas">
                                 🚀 Taze Veri Bas
                             </button>
                         </div>
@@ -189,11 +168,11 @@
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 12px; background: var(--bg-card-subtle); border-bottom: 1px solid var(--border-color);">
                     <div style="background: rgba(7, 10, 18, 0.6); padding: 8px 10px; border-radius: 6px; border: 1px solid rgba(0, 240, 255, 0.15);">
                         <span style="font-size: 10px; color: #94a3b8; text-transform: uppercase; display: block;">Uçuş Havuzu</span>
-                        <span style="font-size: 15px; font-weight: 800; color: #00f0ff; font-family: var(--font-mono);" id="kpi-total-flights">1.200</span>
+                        <span style="font-size: 15px; font-weight: 800; color: #00f0ff; font-family: var(--font-mono);" id="kpi-total-flights">0</span>
                     </div>
                     <div style="background: rgba(7, 10, 18, 0.6); padding: 8px 10px; border-radius: 6px; border: 1px solid rgba(56, 189, 248, 0.15);">
                         <span style="font-size: 10px; color: #94a3b8; text-transform: uppercase; display: block;">Havayolu</span>
-                        <span style="font-size: 15px; font-weight: 800; color: #38bdf8; font-family: var(--font-mono);" id="kpi-total-airlines">159</span>
+                        <span style="font-size: 15px; font-weight: 800; color: #38bdf8; font-family: var(--font-mono);" id="kpi-total-airlines">0</span>
                     </div>
                     <div style="background: rgba(7, 10, 18, 0.6); padding: 8px 10px; border-radius: 6px; border: 1px solid rgba(245, 158, 11, 0.15);">
                         <span style="font-size: 10px; color: #94a3b8; text-transform: uppercase; display: block;">Maks Hız</span>
@@ -256,7 +235,7 @@
                                 <tbody id="audit-table-body">
                                     <tr>
                                         <td colspan="4" style="text-align: center; padding: 20px; color: #64748b;">
-                                            Henüz MCP isteği kaydedilmedi.
+                                             Henüz MCP isteği kaydedilmedi.
                                         </td>
                                     </tr>
                                 </tbody>
@@ -265,8 +244,8 @@
                     </div>
 
                     <div style="margin-top: auto; background: rgba(0, 240, 255, 0.03); border: 1px solid rgba(56, 189, 248, 0.15); border-radius: 8px; padding: 10px; font-size: 11px; color: #94a3b8;">
-                        <strong style="color: #38bdf8; display: block; margin-bottom: 2px;">⚡ Kafka 1200 Telemetri Havuzu:</strong>
-                        Uçuş aramaları ve hız filtreleri Kafka topic 'live-flights' üzerinden anında çekilir.
+                        <strong style="color: #38bdf8; display: block; margin-bottom: 2px;">⚡ Kafka Canlı Telemetri Akışı:</strong>
+                        Türkiye hava sahasındaki tüm uçuşlar 15 saniyelik döngüyle Kafka 'live-flights' topic'ine akar ve 81 il poligonuyla taranır.
                     </div>
                 </div>
             </aside>

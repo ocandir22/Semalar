@@ -5,7 +5,10 @@ import math
 import time
 from typing import Dict, Any, List, Optional
 from kafka import KafkaConsumer, TopicPartition
-from geo_service import geo_engine
+try:
+    from core.geo_service import geo_engine
+except ImportError:
+    from geo_service import geo_engine
 
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8")
@@ -19,25 +22,6 @@ def calculate_haversine_distance(lat1: float, lon1: float, lat2: float, lon2: fl
     a = math.sin(dlat / 2) ** 2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2) ** 2
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
     return round(R * c, 2)
-
-
-# Geographic presets and national airspace bounding boxes
-GEO_REGIONS: Dict[str, Dict[str, Any]] = {
-    # Turkey National Airspace Bounding Box (~35.8° - 42.2° N, ~25.6° - 44.8° E)
-    "TR": {"type": "bbox", "min_lat": 35.8, "max_lat": 42.2, "min_lon": 25.6, "max_lon": 44.8, "name": "Türkiye"},
-    "TURKEY": {"type": "bbox", "min_lat": 35.8, "max_lat": 42.2, "min_lon": 25.6, "max_lon": 44.8, "name": "Türkiye"},
-    "TURKIYE": {"type": "bbox", "min_lat": 35.8, "max_lat": 42.2, "min_lon": 25.6, "max_lon": 44.8, "name": "Türkiye"},
-    "TÜRKIYE": {"type": "bbox", "min_lat": 35.8, "max_lat": 42.2, "min_lon": 25.6, "max_lon": 44.8, "name": "Türkiye"},
-    # Major Geographic Regions
-    "MARMARA": {"type": "bbox", "min_lat": 40.0, "max_lat": 42.1, "min_lon": 26.0, "max_lon": 31.0, "name": "Marmara Bölgesi"},
-    "EGE": {"type": "bbox", "min_lat": 36.5, "max_lat": 40.2, "min_lon": 26.0, "max_lon": 30.2, "name": "Ege Bölgesi"},
-    "AEGEAN": {"type": "bbox", "min_lat": 36.5, "max_lat": 40.2, "min_lon": 26.0, "max_lon": 30.2, "name": "Ege Bölgesi"},
-    "AKDENIZ": {"type": "bbox", "min_lat": 36.0, "max_lat": 38.0, "min_lon": 29.0, "max_lon": 36.5, "name": "Akdeniz Bölgesi"},
-    "MEDITERRANEAN": {"type": "bbox", "min_lat": 36.0, "max_lat": 38.0, "min_lon": 29.0, "max_lon": 36.5, "name": "Akdeniz Bölgesi"},
-    "KARADENIZ": {"type": "bbox", "min_lat": 40.5, "max_lat": 42.2, "min_lon": 31.0, "max_lon": 42.0, "name": "Karadeniz Bölgesi"},
-    "BLACK_SEA": {"type": "bbox", "min_lat": 40.5, "max_lat": 42.2, "min_lon": 31.0, "max_lon": 42.0, "name": "Karadeniz Bölgesi"},
-    "IC_ANADOLU": {"type": "bbox", "min_lat": 37.5, "max_lat": 40.5, "min_lon": 30.5, "max_lon": 37.0, "name": "İç Anadolu Bölgesi"},
-}
 
 
 class FlightKafkaStore:
@@ -169,39 +153,16 @@ class FlightKafkaStore:
         Evaluates all provided constraints (speed, region/province, airline, query, stats) simultaneously in a single pass.
         """
         # If statistics requested, return stream summary
-        if get_stats:
+        if get_stats and str(get_stats).lower() in ["true", "1", "yes"]:
             return self.get_telemetry_stats()
 
         clean_q = query.strip().upper() if query and str(query).strip() else None
         clean_airline = airline.strip().upper() if airline and str(airline).strip() else None
 
-        # Resolve country or region preset if specified
-        geo_filter = None
-        region_name = None
+        # Resolve geographical filter via core geo_engine (81 provinces or 7 macro regions)
         raw_geo = (region or kwargs.get("country") or "").strip()
-
-        # 1. First check if raw_geo corresponds to one of Turkey's 81 provinces (Exact GeoJSON Polygon)
-        if raw_geo:
-            matched_province = geo_engine.resolve_province_name(raw_geo)
-            if matched_province:
-                prov_info = geo_engine.get_province_info(matched_province)
-                region_name = matched_province
-                geo_filter = {
-                    "type": "polygon",
-                    "province": matched_province,
-                    "name": matched_province,
-                    "center": prov_info.get("center") if prov_info else None
-                }
-
-        # 2. Fall back to national/regional preset bounding boxes (e.g. TR, Marmara, Aegean)
-        if not geo_filter and raw_geo:
-            geo_target = raw_geo.upper().replace("İ", "I")
-            if geo_target in GEO_REGIONS:
-                geo_filter = GEO_REGIONS[geo_target]
-                region_name = geo_filter.get("name", geo_target)
-            elif "TURK" in geo_target or geo_target == "TR":
-                geo_filter = GEO_REGIONS["TR"]
-                region_name = "Türkiye"
+        geo_filter = geo_engine.resolve_geo_filter(raw_geo) if raw_geo else None
+        region_name = geo_filter.get("name", raw_geo) if geo_filter else None
 
         matched = []
         for f in self.flights.values():
@@ -349,6 +310,11 @@ class FlightKafkaStore:
 
 # Global Singleton Store Instance
 kafka_store = FlightKafkaStore()
+
+
+def query_kafka_stream(**kwargs) -> Dict[str, Any]:
+    """Unified entrypoint for querying the Kafka flight stream."""
+    return kafka_store.query_flights(**kwargs)
 
 
 if __name__ == "__main__":
