@@ -47,58 +47,8 @@ from core.llm_client import get_agent_info
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8")
 
-# In-Memory Audit Log Ring Buffer & Kafka Audit Producer
-_recent_audit_logs = collections.deque(maxlen=100)
-_audit_producer = None
-try:
-    _audit_producer = KafkaProducer(
-        bootstrap_servers="localhost:9092",
-        value_serializer=lambda v: json.dumps(v, ensure_ascii=False).encode("utf-8"),
-        key_serializer=lambda k: str(k).encode("utf-8") if k else None,
-        acks=0,
-        retries=1
-    )
-except Exception:
-    pass
-
-print("✅ MCP Kafka Request Audit Logger active: Topic 'mcp-requests'")
-
-
-def log_mcp_to_kafka(tool_name: str, args: dict, result: Any, elapsed_ms: float):
-    """Logs incoming MCP tool requests in real time to the Kafka 'mcp-requests' topic and in-memory ring buffer."""
-    try:
-        status = "success"
-        matched_count = None
-        if isinstance(result, dict):
-            status = result.get("status", "success")
-            if "total_matches" in result:
-                matched_count = result["total_matches"]
-            elif "returned_count" in result:
-                matched_count = result["returned_count"]
-            elif "flights" in result and isinstance(result["flights"], list):
-                matched_count = len(result["flights"])
-            elif "total_tracked" in result:
-                matched_count = result["total_tracked"]
-
-        payload = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "tool_name": tool_name,
-            "arguments": args,
-            "status": status,
-            "matched_records": matched_count,
-            "execution_time_ms": round(elapsed_ms, 2)
-        }
-        _recent_audit_logs.appendleft(payload)
-        if _audit_producer:
-            _audit_producer.send("mcp-requests", key=tool_name, value=payload)
-
-        # Print clean 1-line MCP execution log to terminal
-        active_args = {k: v for k, v in args.items() if v not in [None, "", False] and not k.startswith("_")}
-        args_repr = ", ".join(f"{k}={repr(v)}" for k, v in active_args.items()) if active_args else "no args"
-        records_info = f" | {matched_count} records" if matched_count is not None else ""
-        print(f"📡 \033[94m[MCP SERVER]\033[0m \033[1m{tool_name}\033[0m({args_repr}) ➔ \033[92m{status}\033[0m ({elapsed_ms:.1f}ms{records_info})")
-    except Exception:
-        pass
+# Centralized Kafka Audit Logger (Topic 'mcp-requests')
+from core.audit_logger import log_mcp_request, get_recent_audit_logs
 
 
 def audit_tool(name: str):
@@ -118,7 +68,7 @@ def audit_tool(name: str):
             except Exception:
                 call_args = kwargs or ({"arg_0": args[0]} if args else {})
 
-            log_mcp_to_kafka(name, call_args, result, elapsed_ms)
+            log_mcp_request(name, call_args, result, elapsed_ms)
             return result
         return wrapper
     return decorator
@@ -425,7 +375,7 @@ async def api_kafka_fastest(request):
 
 async def api_kafka_logs(request):
     """Returns recent MCP tool audit logs in real-time (backed by Kafka 'mcp-requests')."""
-    logs_list = list(_recent_audit_logs)
+    logs_list = get_recent_audit_logs()
     return JSONResponse({
         "status": "success",
         "total_logs": len(logs_list),

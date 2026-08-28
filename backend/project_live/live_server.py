@@ -32,6 +32,7 @@ from project_live.flight_service import (
 )
 from project_live.live_agent import ask_live_agent
 from core.llm_client import get_agent_info
+from core.audit_logger import log_mcp_request
 
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8")
@@ -115,7 +116,10 @@ async def api_tools_execute(request):
             if "min_speed" in args and "min_speed_kmh" not in args:
                 args["min_speed_kmh"] = args.pop("min_speed")
 
+        t_start = time.perf_counter()
         res = tool_func(**args)
+        elapsed_ms = (time.perf_counter() - t_start) * 1000
+        log_mcp_request(tool_name, args, res, elapsed_ms)
         return JSONResponse(res)
     except Exception as e:
         return JSONResponse({"status": "error", "error": str(e)}, status_code=500)

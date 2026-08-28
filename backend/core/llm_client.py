@@ -13,6 +13,14 @@ import time
 from typing import Dict, Any, List, Optional, Callable
 from dotenv import load_dotenv
 
+try:
+    from .audit_logger import log_mcp_request
+except ImportError:
+    try:
+        from core.audit_logger import log_mcp_request
+    except ImportError:
+        def log_mcp_request(tool_name, args, result, elapsed_ms): pass
+
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8")
 
@@ -354,6 +362,7 @@ async def run_llm_cycle(
                 t_tool_elapsed = (time.perf_counter() - t_tool_start) * 1000
 
                 _print_tool_result(tool_name, parsed_json, t_tool_elapsed)
+                log_mcp_request(tool_name, tool_args, parsed_json, t_tool_elapsed)
 
                 tool_calls_executed.append({
                     "name": tool_name,
@@ -495,6 +504,7 @@ async def run_llm_cycle(
                 t_tool_elapsed = (time.perf_counter() - t_tool_start) * 1000
 
                 _print_tool_result(t_name, tool_result, t_tool_elapsed)
+                log_mcp_request(t_name, t_args, tool_result, t_tool_elapsed)
 
                 tool_calls_executed.append({
                     "name": t_name,
