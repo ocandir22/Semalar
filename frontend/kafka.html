@@ -53,6 +53,132 @@
         box-shadow: var(--shadow-hud);
         overflow: hidden;
       }
+      
+      /* ============================================================
+         AI THINKING & REASONING ACCORDION
+         ============================================================ */
+      .thought-accordion {
+        margin-bottom: 12px;
+        background: rgba(13, 20, 36, 0.7);
+        border: 1px solid rgba(56, 189, 248, 0.25);
+        border-radius: 10px;
+        overflow: hidden;
+        transition: all 0.2s ease;
+      }
+      .thought-accordion:hover {
+        border-color: rgba(56, 189, 248, 0.45);
+        box-shadow: 0 0 15px rgba(56, 189, 248, 0.08);
+      }
+      .thought-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 12px;
+        background: rgba(15, 23, 42, 0.7);
+        cursor: pointer;
+        user-select: none;
+        transition: background 0.2s ease;
+      }
+      .thought-header:hover {
+        background: rgba(56, 189, 248, 0.1);
+      }
+      .thought-title-group {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12px;
+        font-weight: 600;
+        color: #38bdf8;
+      }
+      .thought-time-badge {
+        font-size: 10px;
+        font-family: var(--font-mono);
+        color: #34d399;
+        background: rgba(16, 185, 129, 0.15);
+        border: 1px solid rgba(16, 185, 129, 0.3);
+        padding: 1px 6px;
+        border-radius: 4px;
+      }
+      .thought-toggle-icon {
+        font-size: 10px;
+        color: #94a3b8;
+        transition: transform 0.2s ease;
+      }
+      .thought-accordion.collapsed .thought-toggle-icon {
+        transform: rotate(-90deg);
+      }
+      .thought-accordion.collapsed .thought-body {
+        display: none;
+      }
+      .thought-body {
+        padding: 12px;
+        border-top: 1px solid rgba(56, 189, 248, 0.12);
+        font-size: 12px;
+        color: #cbd5e1;
+      }
+      .thought-timeline {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        position: relative;
+        padding-left: 4px;
+      }
+      .thought-step {
+        display: flex;
+        gap: 10px;
+        position: relative;
+      }
+      .thought-step-icon {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: rgba(30, 41, 59, 0.9);
+        border: 1px solid rgba(56, 189, 248, 0.35);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 11px;
+        flex-shrink: 0;
+        z-index: 1;
+      }
+      .thought-step-content {
+        flex: 1;
+      }
+      .thought-step-title {
+        font-weight: 700;
+        color: #f1f5f9;
+        font-size: 11.5px;
+        margin-bottom: 2px;
+      }
+      .thought-step-detail {
+        color: #94a3b8;
+        font-size: 11px;
+        line-height: 1.4;
+      }
+      .thought-step-result {
+        margin-top: 4px;
+        display: inline-block;
+        background: rgba(16, 185, 129, 0.12);
+        border: 1px solid rgba(16, 185, 129, 0.3);
+        color: #34d399;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 10.5px;
+        font-family: var(--font-mono);
+      }
+      .thought-raw-block {
+        margin-top: 10px;
+        padding: 8px 10px;
+        background: rgba(7, 10, 18, 0.85);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 6px;
+        font-family: var(--font-mono);
+        font-size: 10.5px;
+        color: #a5f3fc;
+        max-height: 160px;
+        overflow-y: auto;
+        white-space: pre-wrap;
+      }
     </style>
 </head>
 <body>
@@ -270,13 +396,59 @@
                 .replace(/\n/g, '<br>');
         }
 
-        function appendMessage(role, content, toolCalls = [], model = "") {
+        function renderThoughtProcessHtml(thought) {
+            if (!thought || !thought.steps || thought.steps.length === 0) return "";
+
+            const stepsHtml = thought.steps.map(step => `
+                <div class="thought-step">
+                    <div class="thought-step-icon">${step.icon || '⚡'}</div>
+                    <div class="thought-step-content">
+                        <div class="thought-step-title">${step.title}</div>
+                        <div class="thought-step-detail">${step.detail}</div>
+                        ${step.result_summary ? `<div class="thought-step-result">${step.result_summary}</div>` : ''}
+                    </div>
+                </div>
+            `).join("");
+
+            const rawReasoningHtml = thought.raw_reasoning ? `
+                <div style="margin-top: 10px;">
+                    <span style="font-size: 10px; color: #64748b; text-transform: uppercase; font-weight: 700; display: block; margin-bottom: 4px;">🧠 Model İç Düşünce Akışı:</span>
+                    <div class="thought-raw-block">${thought.raw_reasoning}</div>
+                </div>
+            ` : "";
+
+            return `
+            <div class="thought-accordion">
+                <div class="thought-header" onclick="this.parentElement.classList.toggle('collapsed')">
+                    <div class="thought-title-group">
+                        <span>🧠</span>
+                        <span>Düşünme Süreci & MCP Akıl Yürütme</span>
+                        <span class="thought-time-badge">⚡ ${thought.duration_seconds || 0}s</span>
+                    </div>
+                    <span class="thought-toggle-icon">▼</span>
+                </div>
+                <div class="thought-body">
+                    <div class="thought-timeline">
+                        ${stepsHtml}
+                    </div>
+                    ${rawReasoningHtml}
+                </div>
+            </div>
+            `;
+        }
+
+        function appendMessage(role, content, toolCalls = [], model = "", thoughtProcess = null) {
             const list = document.getElementById("messages-list");
             const row = document.createElement("div");
             row.className = `message-row ${role}`;
 
+            let thoughtHtml = "";
+            if (role === "assistant" && thoughtProcess) {
+                thoughtHtml = renderThoughtProcessHtml(thoughtProcess);
+            }
+
             let toolCallsHtml = "";
-            if (toolCalls && toolCalls.length > 0) {
+            if (toolCalls && toolCalls.length > 0 && !thoughtProcess) {
                 toolCallsHtml = `
                 <div class="tool-trace-container">
                     ${toolCalls.map(tc => `
@@ -298,6 +470,7 @@
                     ${model ? `<span style="color: #64748b; font-size: 10px; margin-left: 6px;">(${model})</span>` : ''}
                 </div>
                 <div class="message-bubble">
+                    ${thoughtHtml}
                     ${toolCallsHtml}
                     <div>${role === 'user' ? content : formatMessageText(content)}</div>
                 </div>
@@ -327,12 +500,11 @@
                     body: JSON.stringify({ message: text, project: "kafka" })
                 });
 
-
                 const data = await res.json();
                 if (data.status === "success") {
-                    appendMessage("assistant", data.answer, data.tool_calls, data.model);
+                    appendMessage("assistant", data.answer, data.tool_calls, data.model, data.thought_process);
                 } else {
-                    appendMessage("assistant", `⚠️ **Hata:** ${data.answer || data.error || 'İstek işlenemedi.'}`, data.tool_calls, data.model);
+                    appendMessage("assistant", `⚠️ **Hata:** ${data.answer || data.error || 'İstek işlenemedi.'}`, data.tool_calls, data.model, data.thought_process);
                 }
                 loadLogs(); // Refresh logs after query
             } catch (err) {

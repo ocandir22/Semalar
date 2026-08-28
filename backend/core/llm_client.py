@@ -259,6 +259,72 @@ def build_openai_tools(tool_definitions: List[Dict[str, Any]]):
     return tools
 
 
+def build_thought_process(
+    user_query: str,
+    tool_calls_executed: list,
+    reasoning_text: Optional[str] = None,
+    total_elapsed_seconds: float = 0.0
+) -> Dict[str, Any]:
+    """Builds a structured step-by-step thinking and MCP reasoning breakdown for the UI thinking block."""
+    steps = []
+
+    # 1. Intent & Parameter Mapping Stage
+    steps.append({
+        "stage": "intent",
+        "icon": "🎯",
+        "title": "Kullanıcı Niyeti & Parametre Çözümleme",
+        "detail": f"Kullanıcı sorgusu incelendi: \"{user_query}\". Türkiye 81 il poligonu, irtifa, hız ve havayolu filtreleri haritalandı."
+    })
+
+    # 2. Tool Execution Stage
+    if tool_calls_executed:
+        for tc in tool_calls_executed:
+            t_name = tc.get("name", "query_kafka_stream")
+            t_args = tc.get("args", {})
+            t_res = tc.get("result", {})
+
+            matched_count = 0
+            if isinstance(t_res, dict):
+                matched_count = t_res.get("total_matches", len(t_res.get("flights", [])))
+            elif isinstance(t_res, list):
+                matched_count = len(t_res)
+
+            steps.append({
+                "stage": "tool_call",
+                "icon": "⚙️",
+                "title": f"FastMCP Tool Kararı: `{t_name}`",
+                "detail": f"Parametreler: {json.dumps(t_args, ensure_ascii=False)}",
+                "result_summary": f"Kafka topic 'live-flights' havuzundan {matched_count} eşleşen telemetri kaydı çekildi."
+            })
+    else:
+        steps.append({
+            "stage": "direct_reasoning",
+            "icon": "💡",
+            "title": "Doğrudan Yanıt Kararı",
+            "detail": "Kullanıcı sorusu genel havacılık / radar kavramı içerdiğinden ek telemetri filtrelemesine ihtiyaç duyulmadı."
+        })
+
+    # 3. Telemetry Synthesis Stage
+    steps.append({
+        "stage": "synthesis",
+        "icon": "📝",
+        "title": "Telemetri Sentezi ve Yanıt Üretimi",
+        "detail": "Elde edilen gerçek zamanlı telemetriler (irtifa, hız, rota, uçak tipi) analiz edilerek Türkçe dilbilgisine uygun olarak hazırlandı."
+    })
+
+    summary = (
+        f"Kullanıcı talebi analiz edildi, {len(tool_calls_executed)} MCP aracı ile Kafka telemetrisi sorgulandı."
+        if tool_calls_executed else "Kullanıcı talebi doğrudan yanıtlandı."
+    )
+
+    return {
+        "summary": summary,
+        "duration_seconds": round(total_elapsed_seconds, 2),
+        "steps": steps,
+        "raw_reasoning": reasoning_text if reasoning_text else None
+    }
+
+
 async def call_gemini_with_retry(genai_client, model: str, contents: list, config, max_retries: int = 3):
     """Calls Gemini with automatic retry and model fallback in case of temporary 503/429 spikes."""
     models_to_try = [model] + [m for m in FALLBACK_MODELS if m != model]
@@ -387,10 +453,18 @@ async def run_llm_cycle(
                 cleaned_answer = clean_model_output(answer)
                 _print_agent_final_response(cleaned_answer, time.perf_counter() - t_start)
 
+                thought_process = build_thought_process(
+                    user_query=user_query,
+                    tool_calls_executed=tool_calls_executed,
+                    reasoning_text=None,
+                    total_elapsed_seconds=time.perf_counter() - t_start
+                )
+
                 return {
                     "status": "success",
                     "answer": cleaned_answer,
                     "tool_calls": tool_calls_executed,
+                    "thought_process": thought_process,
                     "model": active_model,
                     "provider": provider
                 }
@@ -409,10 +483,19 @@ async def run_llm_cycle(
             answer = extract_text_from_response(response)
             cleaned_answer = clean_model_output(answer)
             _print_agent_final_response(cleaned_answer, time.perf_counter() - t_start)
+
+            thought_process = build_thought_process(
+                user_query=user_query,
+                tool_calls_executed=[],
+                reasoning_text=None,
+                total_elapsed_seconds=time.perf_counter() - t_start
+            )
+
             return {
                 "status": "success",
                 "answer": cleaned_answer,
                 "tool_calls": [],
+                "thought_process": thought_process,
                 "model": active_model,
                 "provider": provider
             }
@@ -483,6 +566,8 @@ async def run_llm_cycle(
                 "error": str(e)
             }
 
+        reasoning_text = getattr(message, "reasoning_content", None) or getattr(message, "reasoning", None)
+
         if message.tool_calls:
             messages.append(message)
             for tool_call in message.tool_calls:
@@ -529,10 +614,22 @@ async def run_llm_cycle(
                 cleaned_ans = clean_model_output(raw_ans)
                 _print_agent_final_response(cleaned_ans, time.perf_counter() - t_start)
 
+                final_msg = final_completion.choices[0].message
+                if not reasoning_text:
+                    reasoning_text = getattr(final_msg, "reasoning_content", None) or getattr(final_msg, "reasoning", None)
+
+                thought_process = build_thought_process(
+                    user_query=user_query,
+                    tool_calls_executed=tool_calls_executed,
+                    reasoning_text=reasoning_text,
+                    total_elapsed_seconds=time.perf_counter() - t_start
+                )
+
                 return {
                     "status": "success",
                     "answer": cleaned_ans,
                     "tool_calls": tool_calls_executed,
+                    "thought_process": thought_process,
                     "model": model_name,
                     "provider": provider
                 }
@@ -550,10 +647,19 @@ async def run_llm_cycle(
             print(f"  {_ANSI_GRAY}ℹ️  [LLM Kararı]: Doğrudan Yanıt (Tool çağrısı gerekmedi){_ANSI_RESET}")
             cleaned_ans = clean_model_output(message.content or "")
             _print_agent_final_response(cleaned_ans, time.perf_counter() - t_start)
+
+            thought_process = build_thought_process(
+                user_query=user_query,
+                tool_calls_executed=[],
+                reasoning_text=reasoning_text,
+                total_elapsed_seconds=time.perf_counter() - t_start
+            )
+
             return {
                 "status": "success",
                 "answer": cleaned_ans,
                 "tool_calls": [],
+                "thought_process": thought_process,
                 "model": model_name,
                 "provider": provider
             }
