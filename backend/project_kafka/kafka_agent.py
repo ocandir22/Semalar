@@ -32,9 +32,9 @@ def get_kafka_mcp_definitions() -> List[Dict[str, Any]]:
     """
     try:
         try:
-            from .kafka_server import mcp_server
+            from server import mcp_server
         except ImportError:
-            from project_kafka.kafka_server import mcp_server
+            from backend.server import mcp_server
 
         if mcp_server is not None and hasattr(mcp_server, "_tool_manager"):
             tools = []
