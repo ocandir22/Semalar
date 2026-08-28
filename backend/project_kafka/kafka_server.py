@@ -41,7 +41,7 @@ mcp_server = MCPServer("Semalar-Kafka-Cockpit")
 
 
 @mcp_server.tool()
-def kafka_query_stream(
+def query_kafka_stream(
     query: str = "",
     region: str = "",
     airline: str = "",
