@@ -51,7 +51,30 @@ def kafka_query_stream(
     limit: int = 15,
     **kwargs
 ) -> Dict[str, Any]:
-    """Unified multi-filter query tool for the Apache Kafka live flight telemetry stream."""
+    """Unified multi-filter query tool for the Apache Kafka live flight telemetry stream.
+
+    Performs sub-millisecond in-memory filtering against 500+ live aircraft records synchronized
+    from the Apache Kafka topic 'live-flights'. Supports compound multi-parameter queries
+    combining ground speed, 81 Turkish province boundary polygons, airlines, altitude, and stats.
+
+    Args:
+        query: Specific flight number (e.g. 'TK10', 'MH21'), callsign ('THY10', 'PGT45K'), or aircraft registration tail ('TC-LJA').
+        region: Target Turkish province name (e.g. 'Erzurum', 'İstanbul', 'Ankara') or macro-region ('MARMARA', 'EGE', 'TR'). Evaluates exact 81-province boundary polygons via sub-millisecond ray-casting.
+        airline: 3-letter ICAO (e.g. 'THY', 'PGT', 'DLH', 'BAW') or 2-letter IATA ('TK', 'PC', 'LH', 'BA') airline code.
+        min_speed_kmh: Minimum ground speed filter in km/h (e.g. 800, 900 for high-speed or near-supersonic aircraft).
+        min_altitude_feet: Minimum altitude filter in feet (e.g. 32800 for 10,000 meters and above).
+        get_stats: Set to True to retrieve overall Kafka stream statistical summary (maximum/average speed and altitude, active airlines count).
+        limit: Maximum number of flight records to return (default: 15).
+
+    Returns:
+        Dict[str, Any]: Structured JSON response containing:
+            - status (str): 'success' or 'error'
+            - source (str): 'kafka_in_memory_stream'
+            - total_matches (int): Total number of matching aircraft in the Kafka stream
+            - returned_count (int): Number of flights returned in this batch
+            - flights (list): Array of matching flight objects with telemetry, aircraft model, route, speed, altitude, and coordinates.
+            - applied_region / province_details (dict, optional): Provincial polygon metadata when region filter is used.
+    """
     return kafka_store.query_flights(
         query=query,
         region=region or kwargs.get("country", ""),
