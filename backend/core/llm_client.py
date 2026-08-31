@@ -317,11 +317,22 @@ def build_thought_process(
             "tool_name": t_name,
             "arguments": t_args,
             "matched_records": matched_count,
-            "status": t_res.get("status", "success") if isinstance(t_res, dict) else "success"
-        })
+    # If the model didn't output native thinking tokens (e.g. flash-lite models),
+    # construct a clean dynamic thought summary based on actual query and tool decisions:
+    final_reasoning = reasoning_text.strip() if reasoning_text and reasoning_text.strip() else None
+    if not final_reasoning:
+        if tool_traces:
+            lines = [f"Kullanıcı sorgusu analiz edildi: \"{user_query}\""]
+            for tr in tool_traces:
+                args_str = json.dumps(tr['arguments'], ensure_ascii=False)
+                lines.append(f"• FastMCP '{tr['tool_name']}' aracı çağrıldı (Parametreler: {args_str}) ➔ {tr['matched_records']} canlı telemetri eşleşti.")
+            lines.append("• Alınan canlı radar verileri analiz edilerek havacılık formatında yanıt hazırlandı.")
+            final_reasoning = "\n".join(lines)
+        else:
+            final_reasoning = f"Kullanıcı sorgusu (\" {user_query} \") analiz edildi ve doğrudan yanıtlandı."
 
     return {
-        "raw_reasoning": reasoning_text.strip() if reasoning_text and reasoning_text.strip() else None,
+        "raw_reasoning": final_reasoning,
         "tool_traces": tool_traces,
         "duration_seconds": round(total_elapsed_seconds, 2),
         "tools_count": len(tool_calls_executed)

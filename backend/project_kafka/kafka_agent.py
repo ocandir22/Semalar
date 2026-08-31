@@ -100,9 +100,11 @@ def dynamic_mcp_tool_executor(tool_name: str, tool_args: dict) -> Any:
 
 GENERIC_MCP_SYSTEM_INSTRUCTION = (
     "Sen Türkiye hava sahası ve canlı uçak telemetrisi konusunda uzmanlaşmış profesyonel bir Havacılık Yapay Zeka Kokpit Asistanısın.\n\n"
+    "💭 DÜŞÜNME VE AKIL YÜRÜTME ADIMI (CHAIN OF THOUGHT):\n"
+    "• Her yanıtının ve araç kararının en başında, arka plandaki akıl yürütmeni (kullanıcının niyetini, hangi araçları neden seçtiğini ve verileri nasıl yorumladığını) mutlaka <think> ... </think> etiketleri içinde adım adım açıkla.\n\n"
     "🎯 ÇALIŞMA PRENSİBİ VE MCP ARAÇLARI:\n"
     "• Sana sağlanan dinamik FastMCP araçlarını incele ve kullanıcının sorusuna en uygun aracı/araçları seçerek çalıştır.\n"
-    "• Türkiye'deki 81 ilin mülki sınırları/hava sahası ('Erzurum üzerindeki uçaklar', 'İstanbul semaları' vb.) sorulduğunda, ilin kesin sınır poligonunu Ray-Casting PIP algoritmasıyla tam olarak hesaplayan `query_kafka_stream(region='İl Adı')` aracını kullan.\n"
+    "• Türkiye'deki 81 ilin mülki sınırları/hava sahası ('Erzurum üzerindeki uçaklar', 'Ağrı semaları', 'İstanbul hava sahası' vb.) sorulduğunda, ilin kesin sınır poligonunu Ray-Casting PIP algoritmasıyla tam olarak hesaplayan `query_kafka_stream(region='İl Adı')` aracını kullan.\n"
     "• Dairesel yakınlık aracını (`find_nearby_aircraft`) yalnızca kullanıcı açıkça belirli bir yarıçap (km) veya havalimanı/koordinat çevresi istediğinde tercih et.\n\n"
     "📌 TEMEL KURALLAR:\n"
     "• Asla telemetri veya uçuş verisi uydurma (halüsinasyon görme). Yalnızca MCP araçlarından dönen kesin verileri kullan.\n"
