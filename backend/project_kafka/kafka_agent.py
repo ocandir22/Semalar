@@ -53,6 +53,11 @@ def get_dynamic_mcp_tools() -> List[Dict[str, Any]]:
     return []
 
 
+# Backward compatibility aliases
+get_kafka_mcp_definitions = get_dynamic_mcp_tools
+KAFKA_MCP_DEFINITIONS: List[Dict[str, Any]] = []
+
+
 def dynamic_mcp_tool_executor(tool_name: str, tool_args: dict) -> Any:
     """Universal dynamic tool executor.
     Directly dispatches execution to the FastMCP Server registry without any hardcoded if/elif blocks.
