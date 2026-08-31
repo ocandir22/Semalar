@@ -317,6 +317,9 @@ def build_thought_process(
             "tool_name": t_name,
             "arguments": t_args,
             "matched_records": matched_count,
+            "status": t_res.get("status", "success") if isinstance(t_res, dict) else "success"
+        })
+
     # If the model didn't output native thinking tokens (e.g. flash-lite models),
     # construct a clean dynamic thought summary based on actual query and tool decisions:
     final_reasoning = reasoning_text.strip() if reasoning_text and reasoning_text.strip() else None
