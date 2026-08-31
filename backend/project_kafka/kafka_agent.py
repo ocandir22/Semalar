@@ -1,8 +1,7 @@
 """
 Kafka Airspace Telemetry AI Agent — Project #2
-Specialized AI Agent for Apache Kafka real-time flight telemetry streams,
-supersonic speed filtering, 81 Turkish province polygon containment, emergency squawks,
-airport terminal traffic, vertical climb/descent rates, international transit corridors, and fleet analytics.
+Generic MCP Client Agent: Dynamically discovers tools from the FastMCP Server,
+dispatches tool executions dynamically without hardcoded routing or bloated system prompts.
 """
 
 import sys
@@ -14,22 +13,17 @@ try:
 except ImportError:
     from ..core.llm_client import run_llm_cycle, get_agent_info
 
-# Kafka Store
-try:
-    from .flight_kafka_store import kafka_store
-except ImportError:
-    from flight_kafka_store import kafka_store
-
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8")
 
 # ============================================================
-# Project #2 FastMCP Tools Integration (Single Source of Truth)
+# Dynamic FastMCP Tool Discovery (True MCP Architecture)
 # ============================================================
 
-def get_kafka_mcp_definitions() -> List[Dict[str, Any]]:
-    """Dynamically extracts OpenAI/Gemini compatible function schemas directly from the FastMCP Server.
-    Eliminates duplicated tool definitions so server.py is the Single Source of Truth.
+def get_dynamic_mcp_tools() -> List[Dict[str, Any]]:
+    """Dynamically queries the FastMCP Server for all registered tools.
+    Extracts name, description, and JSON Schema parameters at runtime.
+    The agent never needs to know tool names in advance.
     """
     try:
         try:
@@ -54,67 +48,54 @@ def get_kafka_mcp_definitions() -> List[Dict[str, Any]]:
                 })
             if tools:
                 return tools
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"⚠️ [MCP Agent] Could not dynamically load tools from FastMCP: {e}")
     return []
 
 
-# Dynamic Single Source of Truth tools definition
-KAFKA_MCP_DEFINITIONS: List[Dict[str, Any]] = get_kafka_mcp_definitions()
+def dynamic_mcp_tool_executor(tool_name: str, tool_args: dict) -> Any:
+    """Universal dynamic tool executor.
+    Directly dispatches execution to the FastMCP Server registry without any hardcoded if/elif blocks.
+    """
+    try:
+        try:
+            from server import MCP_TOOLS_REGISTRY
+        except ImportError:
+            from backend.server import MCP_TOOLS_REGISTRY
 
-KAFKA_SYSTEM_INSTRUCTION = (
-    "You are an expert AI Aviation Cockpit Assistant specialized in real-time Apache Kafka flight telemetry streams.\n"
-    "You have access to 7 official FastMCP tools to analyze live aircraft in Turkish airspace.\n\n"
-    "🛠️ YOUR ACTIVE FASTMCP TOOLS & WHEN TO USE THEM:\n"
-    "1. `get_emergency_flights`: Use for emergency squawk codes (7700 general emergency, 7600 lost comms, 7500 hijack) or rapid descent alerts.\n"
-    "2. `find_nearby_aircraft`: Use for radius/proximity queries around any city, landmark, airport, or coordinates (e.g. 'Ankara merkezine 50 km mesafedeki uçaklar', 'Kadıköy açıklarındaki uçuşlar').\n"
-    "3. `get_airport_traffic`: Use for airport arrivals, departures, or approach terminal traffic for any Turkish airport (IST, SAW, ESB, AYT, ADB, DLM, BJV, TZX, etc.).\n"
-    "4. `get_vertical_rate_flights`: Use for climb/descent rates (climbing > +500 fpm, descending < -500 fpm, cruising level flight).\n"
-    "5. `get_transit_flights`: Use for international transit overflights crossing Turkish airspace without landing in Turkey (e.g. Europe ➔ Gulf/Asia).\n"
-    "6. `get_fleet_aircraft_analytics`: Use for aircraft model distributions (Boeing 737/777/787, Airbus A320/A350), wide vs narrow-body shares, and airline fleet stats.\n"
-    "7. `query_kafka_stream`: Use for general multi-filter queries (combining speed, 81-province boundary polygon, airline, flight ID, altitude, and stream stats).\n\n"
-    "💡 ENTITY RESOLUTION & CONVERSIONS:\n"
-    "• 81 Turkish Provinces & Regions: Resolve landmarks/districts to canonical province names (e.g. 'Palandöken' -> Erzurum, 'Boğaz' -> İstanbul, 'Başkent' -> Ankara, 'Kordon' -> İzmir).\n"
-    "• Airlines: Resolve colloquial names (THY/Türk Hava Yolları -> 'THY', Pegasus -> 'PGT', AJet -> 'TKJ', Lufthansa -> 'DLH', Emirates -> 'UAE', Qatar -> 'QTR').\n"
-    "• Metric conversions: Convert metric altitude/speed requests (e.g. '10 bin metre üstü' -> min_altitude_feet=32800).\n\n"
-    "📌 RESPONSE GUIDELINES:\n"
-    "• Never fabricate or hallucinate flight telemetry or models. Only use exact data returned by MCP tools.\n"
-    "• State altitude in both feet and meters, speed in both knots and km/h.\n"
-    "• Highlight aircraft model (e.g. Boeing 777-300ER, Airbus A321neo) and route (e.g. IST ➔ JFK).\n"
-    "• Provide clear, structured, and informative markdown responses in Turkish."
+        if tool_name in MCP_TOOLS_REGISTRY:
+            tool_func = MCP_TOOLS_REGISTRY[tool_name]
+            return tool_func(**tool_args)
+        else:
+            return {"status": "error", "error": f"Tool '{tool_name}' not found on FastMCP Server."}
+    except Exception as e:
+        return {"status": "error", "error": f"Error executing FastMCP tool '{tool_name}': {str(e)}"}
+
+
+# ============================================================
+# Clean, Generic MCP System Instruction (No Hardcoded Tool Names)
+# ============================================================
+
+GENERIC_MCP_SYSTEM_INSTRUCTION = (
+    "Sen Türkiye hava sahası ve canlı uçak telemetrisi konusunda uzmanlaşmış profesyonel bir Havacılık Yapay Zeka Kokpit Asistanısın.\n\n"
+    "🎯 ÇALIŞMA PRENSİBİ VE MCP ARAÇLARI:\n"
+    "• Sana sağlanan dinamik MCP (Model Context Protocol) araçlarını incele ve kullanıcının sorusuna en uygun aracı/araçları seçerek çalıştır.\n"
+    "• Kullanıcı doğal dilde şehir, bölge, havalimanı (IATA/ICAO), irtifa, hız, acil durum veya filo analitiği sorduğunda, araçların parametre tanımlarına göre uygun argümanları oluştur.\n\n"
+    "📌 TEMEL KURALLAR:\n"
+    "• Asla telemetri veya uçuş verisi uydurma (halüsinasyon görme). Yalnızca MCP araçlarından dönen kesin verileri kullan.\n"
+    "• İrtifaları hem feet hem metre, hızları hem knot hem km/s cinsinden belirt.\n"
+    "• Varsa uçak modelini (örn. Boeing 777-300ER, Airbus A321neo) ve rotayı (örn. IST ➔ JFK) vurgula.\n"
+    "• Yanıtlarını Türkçe, yapılandırılmış, maddeli ve profesyonel bir havacılık diliyle sun."
 )
 
 
-def _execute_kafka_tool(tool_name: str, tool_args: dict) -> dict:
-    """Executes FastMCP tools directly against local Kafka in-memory store with sub-millisecond latency."""
-    try:
-        if tool_name in ["query_kafka_stream", "kafka_query_stream"]:
-            return kafka_store.query_flights(**tool_args)
-        elif tool_name == "get_emergency_flights":
-            return kafka_store.find_emergency_flights(**tool_args)
-        elif tool_name == "find_nearby_aircraft":
-            return kafka_store.find_nearby_aircraft(**tool_args)
-        elif tool_name == "get_airport_traffic":
-            return kafka_store.get_airport_traffic(**tool_args)
-        elif tool_name == "get_vertical_rate_flights":
-            return kafka_store.get_vertical_rate_flights(**tool_args)
-        elif tool_name == "get_transit_flights":
-            return kafka_store.get_transit_flights(**tool_args)
-        elif tool_name == "get_fleet_aircraft_analytics":
-            return kafka_store.get_fleet_aircraft_analytics(**tool_args)
-        else:
-            return {"status": "error", "error": f"Tool '{tool_name}' not recognized in FastMCP Server."}
-    except Exception as e:
-        return {"status": "error", "error": str(e)}
-
-
 async def ask_kafka_agent(user_query: str) -> Dict[str, Any]:
-    """Processes a natural language query for Project #2 (Kafka Cockpit) using dynamically discovered FastMCP tools."""
-    tools = get_kafka_mcp_definitions() or KAFKA_MCP_DEFINITIONS
+    """Processes natural language queries by dynamically querying available MCP tools and delegating execution."""
+    dynamic_tools = get_dynamic_mcp_tools()
     return await run_llm_cycle(
         user_query=user_query,
-        system_instruction=KAFKA_SYSTEM_INSTRUCTION,
-        tool_definitions=tools,
-        tool_executor=_execute_kafka_tool,
-        project_label="⚡ Apache Kafka Telemetri Akışı (Proje #2)"
+        system_instruction=GENERIC_MCP_SYSTEM_INSTRUCTION,
+        tool_definitions=dynamic_tools,
+        tool_executor=dynamic_mcp_tool_executor,
+        project_label="⚡ Apache Kafka Telemetri Akışı (MCP Architecture)"
     )
