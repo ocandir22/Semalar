@@ -86,23 +86,24 @@ def query_kafka_stream(
     limit: int = 15,
     **kwargs
 ) -> Dict[str, Any]:
-    """Unified multi-filter query tool for the Apache Kafka live flight telemetry stream.
+    """Primary unified multi-filter query tool for live Apache Kafka aircraft telemetry.
 
-    Performs sub-millisecond in-memory filtering against 500+ live aircraft records synchronized
-    from the Apache Kafka topic 'live-flights'. Supports compound multi-parameter queries
-    combining ground speed, 81 Turkish province boundary polygons, airlines, altitude, and stats.
+    PRIMARY USE CASE FOR PROVINCE AIRSPACES: Use this tool whenever a user asks for aircraft over any of
+    the 81 Turkish provinces (e.g., 'Erzurum üzerindeki uçaklar', 'İstanbul semaları', 'Ankara hava sahası').
+    It performs EXACT sub-millisecond 81-province boundary polygon ray-casting (Point-in-Polygon) rather than an approximate circular radius.
+    Also supports compound queries with flight numbers, callsigns, registration tails, airlines, ground speed, and altitude.
 
     Args:
         query: Specific flight number (e.g. 'TK10', 'MH21'), callsign ('THY10', 'PGT45K'), or aircraft registration tail ('TC-LJA').
-        region: Target Turkish province name (e.g. 'Erzurum', 'İstanbul', 'Ankara') or macro-region ('MARMARA', 'EGE', 'TR'). Evaluates exact 81-province boundary polygons via sub-millisecond ray-casting.
-        airline: 3-letter ICAO (e.g. 'THY', 'PGT', 'DLH', 'BAW') or 2-letter IATA ('TK', 'PC', 'LH', 'BA') airline code.
-        min_speed_kmh: Minimum ground speed filter in km/h (e.g. 800, 900 for high-speed or near-supersonic aircraft).
-        min_altitude_feet: Minimum altitude filter in feet (e.g. 32800 for 10,000 meters and above).
-        get_stats: Set to True to retrieve overall Kafka stream statistical summary (maximum/average speed and altitude, active airlines count).
+        region: Target Turkish province name (e.g. 'Erzurum', 'İstanbul', 'Ankara') or macro-region ('MARMARA', 'EGE', 'TR'). Evaluates exact official 81-province boundary polygons via ray-casting.
+        airline: 3-letter ICAO (e.g. 'THY', 'PGT', 'DLH') or 2-letter IATA ('TK', 'PC', 'LH') airline code.
+        min_speed_kmh: Minimum ground speed filter in km/h (e.g. 800, 900).
+        min_altitude_feet: Minimum altitude filter in feet (e.g. 30000).
+        get_stats: Set to True to retrieve overall Kafka stream statistical summary.
         limit: Maximum number of flight records to return (default: 15).
 
     Returns:
-        Dict[str, Any]: Structured JSON response containing matched aircraft list with telemetry, model, route, speed, altitude, and coordinates.
+        Dict[str, Any]: Structured JSON containing matched aircraft with telemetry, exact polygon match metadata, speed, altitude, and route.
     """
     return kafka_store.query_flights(
         query=query,
@@ -157,18 +158,22 @@ def find_nearby_aircraft(
     min_altitude_feet: Optional[float] = None,
     limit: int = 15
 ) -> Dict[str, Any]:
-    """Finds aircraft within a specified geographic radius (km) around any Turkish city, airport, or exact coordinate (lat, lon) sorted by distance.
+    """Finds aircraft within a radial distance circle (radius in km) around a specific airport or coordinate point.
+
+    NOTE: For official province/city airspace queries (e.g. 'Erzurum üzerindeki uçaklar'), do NOT use this radial tool;
+    use 'query_kafka_stream(region=...)' instead to perform exact 81-province boundary polygon ray-casting.
+    Use this tool ONLY when the user explicitly requests a proximity radius (e.g. '50 km çevresi', 'Esenboğa etrafındaki 30 km').
 
     Args:
-        location: City/Province name (e.g. 'Ankara', 'İstanbul', 'Erzurum') or airport code (e.g. 'IST', 'ESB', 'AYT').
-        latitude: Center latitude (optional if location provided).
-        longitude: Center longitude (optional if location provided).
-        radius_km: Search radius in kilometers (default: 50.0 km).
+        location: Airport code (e.g. 'IST', 'ESB', 'AYT', 'LTAC') or landmark name with radius.
+        latitude: Center latitude coordinate.
+        longitude: Center longitude coordinate.
+        radius_km: Search circle radius in kilometers (default: 50.0 km).
         min_altitude_feet: Optional minimum altitude filter.
         limit: Maximum number of nearby flight records to return.
 
     Returns:
-        Dict[str, Any]: List of aircraft sorted by ascending distance in kilometers with center metadata.
+        Dict[str, Any]: List of aircraft sorted by ascending radial distance in kilometers from the center point.
     """
     return kafka_store.find_nearby_aircraft(
         location=location,
