@@ -397,41 +397,62 @@
         }
 
         function renderThoughtProcessHtml(thought) {
-            if (!thought || !thought.steps || thought.steps.length === 0) return "";
+            if (!thought) return "";
+            const rawText = (thought.raw_reasoning || "").trim();
+            const traces = thought.tool_traces || [];
+            if (!rawText && traces.length === 0) return "";
 
-            const stepsHtml = thought.steps.map(step => `
-                <div class="thought-step">
-                    <div class="thought-step-icon">${step.icon || '⚡'}</div>
-                    <div class="thought-step-content">
-                        <div class="thought-step-title">${step.title}</div>
-                        <div class="thought-step-detail">${step.detail}</div>
-                        ${step.result_summary ? `<div class="thought-step-result">${step.result_summary}</div>` : ''}
+            let tracesHtml = "";
+            if (traces.length > 0) {
+                tracesHtml = `
+                <div style="margin-bottom: ${rawText ? '12px' : '0'};">
+                    <div style="font-size: 10.5px; color: #38bdf8; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+                        <span>⚙️</span> FastMCP Araç İcraları (${traces.length})
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 6px;">
+                        ${traces.map(tr => `
+                            <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 6px; padding: 6px 10px; font-size: 11.5px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <span style="color: #38bdf8; font-weight: 700; font-family: var(--font-mono);">${tr.tool_name}</span>
+                                    <span style="font-size: 10px; color: #34d399; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.3); padding: 1px 6px; border-radius: 4px;">${tr.matched_records} kayıt</span>
+                                </div>
+                                <div style="color: #94a3b8; font-size: 10.5px; font-family: var(--font-mono); margin-top: 3px; word-break: break-all;">
+                                    ${JSON.stringify(tr.arguments || {})}
+                                </div>
+                            </div>
+                        `).join('')}
                     </div>
                 </div>
-            `).join("");
+                `;
+            }
 
-            const rawReasoningHtml = thought.raw_reasoning ? `
-                <div style="margin-top: 10px;">
-                    <span style="font-size: 10px; color: #64748b; text-transform: uppercase; font-weight: 700; display: block; margin-bottom: 4px;">🧠 Model İç Düşünce Akışı:</span>
-                    <div class="thought-raw-block">${thought.raw_reasoning}</div>
+            let rawHtml = "";
+            if (rawText) {
+                const escapedText = rawText.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                rawHtml = `
+                <div>
+                    <div style="font-size: 10.5px; color: #a78bfa; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+                        <span>🧠</span> Model İç Düşünce Akışı (Chain of Thought):
+                    </div>
+                    <div class="thought-raw-block">${escapedText}</div>
                 </div>
-            ` : "";
+                `;
+            }
 
             return `
             <div class="thought-accordion">
                 <div class="thought-header" onclick="this.parentElement.classList.toggle('collapsed')">
                     <div class="thought-title-group">
                         <span>🧠</span>
-                        <span>Düşünme Süreci & MCP Akıl Yürütme</span>
+                        <span>Model Düşünce Akışı (Thinking)</span>
                         <span class="thought-time-badge">⚡ ${thought.duration_seconds || 0}s</span>
+                        ${traces.length > 0 ? `<span style="font-size: 10px; color: #38bdf8; background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.3); padding: 1px 6px; border-radius: 4px;">${traces.length} MCP Tool</span>` : ''}
                     </div>
                     <span class="thought-toggle-icon">▼</span>
                 </div>
                 <div class="thought-body">
-                    <div class="thought-timeline">
-                        ${stepsHtml}
-                    </div>
-                    ${rawReasoningHtml}
+                    ${tracesHtml}
+                    ${rawHtml}
                 </div>
             </div>
             `;

@@ -573,6 +573,66 @@ function formatAssistantMessage(text) {
   return <div className="markdown-content">{elements}</div>;
 }
 
+function ThoughtAccordion({ thought }) {
+  const [isCollapsed, setIsCollapsed] = useState(false);
+  if (!thought) return null;
+  const rawText = (thought.raw_reasoning || "").trim();
+  const traces = thought.tool_traces || [];
+  if (!rawText && traces.length === 0) return null;
+
+  return (
+    <div className={`thought-accordion ${isCollapsed ? "collapsed" : ""}`}>
+      <div className="thought-header" onClick={() => setIsCollapsed(!isCollapsed)}>
+        <div className="thought-title-group">
+          <span>🧠</span>
+          <span>Model Düşünce Akışı (Thinking)</span>
+          <span className="thought-time-badge">⚡ {thought.duration_seconds || 0}s</span>
+          {traces.length > 0 && (
+            <span style={{ fontSize: "10px", color: "#38bdf8", background: "rgba(56, 189, 248, 0.15)", border: "1px solid rgba(56, 189, 248, 0.3)", padding: "1px 6px", borderRadius: "4px" }}>
+              {traces.length} MCP Tool
+            </span>
+          )}
+        </div>
+        <span className="thought-toggle-icon">▼</span>
+      </div>
+      <div className="thought-body">
+        {traces.length > 0 && (
+          <div style={{ marginBottom: rawText ? "12px" : "0" }}>
+            <div style={{ fontSize: "10.5px", color: "#38bdf8", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "6px", display: "flex", alignItems: "center", gap: "6px" }}>
+              <span>⚙️</span> FastMCP Araç İcraları ({traces.length})
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              {traces.map((tr, trIdx) => (
+                <div key={trIdx} style={{ background: "rgba(15, 23, 42, 0.85)", border: "1px solid rgba(56, 189, 248, 0.25)", borderRadius: "6px", padding: "6px 10px", fontSize: "11.5px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ color: "#38bdf8", fontWeight: "700", fontFamily: "var(--font-mono)" }}>{tr.tool_name}</span>
+                    <span style={{ fontSize: "10px", color: "#34d399", background: "rgba(16, 185, 129, 0.15)", border: "1px solid rgba(16, 185, 129, 0.3)", padding: "1px 6px", borderRadius: "4px" }}>
+                      {tr.matched_records} kayıt
+                    </span>
+                  </div>
+                  <div style={{ color: "#94a3b8", fontSize: "10.5px", fontFamily: "var(--font-mono)", marginTop: "3px", wordBreak: "break-all" }}>
+                    {JSON.stringify(tr.arguments || {})}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {rawText && (
+          <div>
+            <div style={{ fontSize: "10.5px", color: "#a78bfa", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "6px", display: "flex", alignItems: "center", gap: "6px" }}>
+              <span>🧠</span> Model İç Düşünce Akışı (Chain of Thought):
+            </div>
+            <div className="thought-raw-block">{rawText}</div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
 function ChatArea({ messages, isLoading, onSelectPrompt, messagesEndRef }) {
   const [copiedIdx, setCopiedIdx] = useState(null);
 
@@ -597,17 +657,21 @@ function ChatArea({ messages, isLoading, onSelectPrompt, messagesEndRef }) {
       {messages.map((msg, idx) => (
         <div key={idx} className={`message-row ${msg.role}`}>
           <div className="message-sender-tag">
-            {msg.role === "user" ? "👤 Siz" : "✈️ Semalar Asistanı"}
+            {msg.role === "user" ? "👤 Siz" : "⚡ Semalar Kafka Asistanı"}
             {msg.model && <span style={{ color: "#64748b", fontSize: "10px" }}>({msg.model})</span>}
           </div>
 
           <div className="message-bubble">
-            {msg.toolCalls && msg.toolCalls.length > 0 && (
+            {msg.role === "assistant" && msg.thoughtProcess && (
+              <ThoughtAccordion thought={msg.thoughtProcess} />
+            )}
+
+            {msg.toolCalls && msg.toolCalls.length > 0 && !msg.thoughtProcess && (
               <div className="tool-trace-container">
                 {msg.toolCalls.map((tc, tcIdx) => (
                   <div key={tcIdx} className="tool-trace-card">
                     <div className="tool-trace-header">
-                      <span>⚙️ MCP Tool:</span>
+                      <span>⚙️ FastMCP Tool:</span>
                       <strong>{tc.name}</strong>
                     </div>
                     <div className="tool-trace-detail">

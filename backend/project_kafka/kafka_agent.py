@@ -58,6 +58,22 @@ get_kafka_mcp_definitions = get_dynamic_mcp_tools
 KAFKA_MCP_DEFINITIONS: List[Dict[str, Any]] = []
 
 
+def _clean_tool_arguments(args: dict) -> dict:
+    """Coerces stringified booleans and numbers safely to match Python tool signatures."""
+    cleaned = {}
+    for k, v in (args or {}).items():
+        if isinstance(v, str):
+            if v.strip().lower() in ["true", "t", "yes", "1"]:
+                cleaned[k] = True
+            elif v.strip().lower() in ["false", "f", "no", "0"]:
+                cleaned[k] = False
+            else:
+                cleaned[k] = v
+        else:
+            cleaned[k] = v
+    return cleaned
+
+
 def dynamic_mcp_tool_executor(tool_name: str, tool_args: dict) -> Any:
     """Universal dynamic tool executor.
     Directly dispatches execution to the FastMCP Server registry without any hardcoded if/elif blocks.
@@ -70,7 +86,8 @@ def dynamic_mcp_tool_executor(tool_name: str, tool_args: dict) -> Any:
 
         if tool_name in MCP_TOOLS_REGISTRY:
             tool_func = MCP_TOOLS_REGISTRY[tool_name]
-            return tool_func(**tool_args)
+            clean_args = _clean_tool_arguments(tool_args)
+            return tool_func(**clean_args)
         else:
             return {"status": "error", "error": f"Tool '{tool_name}' not found on FastMCP Server."}
     except Exception as e:
