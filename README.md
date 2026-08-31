@@ -96,19 +96,19 @@ Semalar/
 
 ---
 
-## 📋 Unified FastMCP Tool: `query_kafka_stream`
+## 📋 FastMCP Havacılık Araçları Kataloğu (7 Aktif MCP Tool)
 
-Every tool execution is intercepted by `core.audit_logger`, recording execution time ($ms$), argument payloads, status, and matched record counts to the Kafka `mcp-requests` audit topic in real-time.
+Her araç çağrısı `core.audit_logger` tarafından araya girilerek yakalanır; milisaniye cinsinden icra süresi, parametreler, durum ve eşleşen kayıt sayısı gerçek zamanlı olarak Kafka `mcp-requests` denetim topic'ine aktarılır.
 
-| Parameter | Type | Description |
-| :--- | :--- | :--- |
-| **`query`** | `string` | Specific flight number (e.g. `TK10`, `MH21`), callsign (`THY10`, `PGT45K`), or tail registration (`TC-LJA`). |
-| **`region`** | `string` | Target Turkish province (`İstanbul`, `Ankara`, `Erzurum`) or macro-region (`MARMARA`, `EGE`, `TR`). Evaluated via ray-casting PIP against exact 81-province boundary polygons. |
-| **`airline`** | `string` | 3-letter ICAO (`THY`, `PGT`, `DLH`, `BAW`) or 2-letter IATA (`TK`, `PC`, `LH`, `BA`) airline code. |
-| **`min_speed_kmh`** | `number` | Minimum ground speed filter in km/h (e.g. 800, 900 for high-speed aircraft). |
-| **`min_altitude_feet`** | `number` | Minimum altitude filter in feet (e.g. 32800 for 10,000 meters and above). |
-| **`get_stats`** | `boolean` | Pass `true` to retrieve stream statistical summary (max/avg speed and altitude, airline counts). |
-| **`limit`** | `integer` | Maximum number of flight records to return (default: 15). |
+| # | FastMCP Tool | Açıklama | Anahtar Parametreler |
+| :--- | :--- | :--- | :--- |
+| 1 | **`query_kafka_stream`** | 81 il poligonu, hız, irtifa, havayolu ve uçuş kodu bazlı birleşik canlı telemetri sorgusu. | `query`, `region`, `airline`, `min_speed_kmh`, `min_altitude_feet`, `get_stats`, `limit` |
+| 2 | **`get_emergency_flights`** | Squawk 7700 (Genel Acil), 7600 (Telsiz Kaybı), 7500 (Kaçırılma) ve ani acil irtifa kaybı tespiti. | `emergency_type`, `include_rapid_descent`, `limit` |
+| 3 | **`find_nearby_aircraft`** | Şehir merkezi, havalimanı veya koordinat etrafındaki $X$ km yarıçapında mesafeye göre yakın uçak araması. | `location`, `latitude`, `longitude`, `radius_km`, `min_altitude_feet`, `limit` |
+| 4 | **`get_airport_traffic`** | Türkiye havalimanları (IST, SAW, ESB, AYT vb.) için iniş yaklaşması (inbound), kalkış (outbound) ve terminal trafiği. | `airport_code`, `traffic_type`, `airline`, `limit` |
+| 5 | **`get_vertical_rate_flights`** | Dikey hız telemetrisi (fpm): tırmanışta olan (> +500 fpm), alçalan (< -500 fpm) veya seyirdeki uçuşlar. | `flight_phase`, `min_vertical_speed_fpm`, `region`, `airline`, `limit` |
+| 6 | **`get_transit_flights`** | Türkiye hava sahasını sadece üst geçiş (transit) olarak kullanan uluslararası koridor uçuşları. | `min_altitude_feet`, `airline`, `limit` |
+| 7 | **`get_fleet_aircraft_analytics`** | Havada aktif uçak modelleri (B777, A350, B737 vb.) dağılımı, geniş/dar gövde payları ve havayolu analitiği. | `aircraft_family`, `airline`, `include_breakdown` |
 
 ---
 

@@ -497,11 +497,13 @@ function KafkaLogsView() {
 
 function PromptChips({ onSelectPrompt }) {
   const samplePrompts = [
-    { label: "⚡ 900 km/s üzeri hızlı uçaklar", query: "Kafka akışında 900 km/s hızın üzerindeki en hızlı uçakları ve modellerini listele" },
-    { label: "📊 Kafka Akış İstatistikleri", query: "Kafka telemetri deposundaki ortalama hız, en yüksek irtifa ve toplam uçak istatistikleri nelerdir?" },
-    { label: "📍 THY10 nerede?", query: "THY10 nolu uçak şu an nerede, irtifası kaç ve uçağın modeli ne?" },
-    { label: "🇹🇷 İstanbul Semaları", query: "İstanbul (41.0082, 28.9784) semalarında 150 km yarıçapında uçan uçakları göster" },
-    { label: "🔥 En çok takip edilenler", query: "Dünyada şu an FlightRadar24'te en çok takip edilen ilk 3 uçuş hangisi?" }
+    { label: "🚨 Acil Durum & Squawk", query: "Hava sahasında acil durum (Squawk 7700/7600/7500) veya ani irtifa kaybı bildiren uçak var mı?" },
+    { label: "🛫 IST İniş & Terminal Trafiği", query: "İstanbul Havalimanı'na (IST) şu an yaklaşmada olan veya inmekte olan uçakları listele" },
+    { label: "📍 Ankara 50 km Yarıçapı", query: "Ankara merkezine 50 km yarıçapındaki uçakları mesafelerine göre sırala" },
+    { label: "📈 Tırmanışta Olan Uçuşlar", query: "Şu an hızlı tırmanışta (climbing > 1000 fpm) olan uçaklar hangileri?" },
+    { label: "🌍 Transit Üst Geçiş Koridoru", query: "Türkiye hava sahasını transit olarak kullanan uluslararası uçuşları listele" },
+    { label: "📊 Filo & Model Analitiği", query: "Semalarımızda şu an uçan modellerin (B777, A350, B737 vb.) ve havayollarının filo analitiği nedir?" },
+    { label: "🚀 900 km/s Üzeri Hızlı Uçaklar", query: "Kafka akışında 900 km/s hızın üzerindeki en hızlı uçakları ve modellerini listele" }
   ];
 
   return (

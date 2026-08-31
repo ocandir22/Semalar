@@ -66,12 +66,12 @@ def audit_tool(name: str):
 # Create the FastMCP Server instance
 mcp_server = MCPServer(
     name="semalar-kafka-flight-mcp",
-    description="Streamable HTTP MCP Server providing live Apache Kafka aircraft telemetry stream cache, 81-province polygon filtering, and AI assistant tools."
+    description="Streamable HTTP FastMCP Server providing live Apache Kafka aircraft telemetry stream cache, 81-province polygon filtering, emergency squawks, airport traffic, and AI cockpit tools."
 )
 
 
 # ============================================================
-# UNIFIED KAFKA STREAM MCP TOOL (Single Source of Truth)
+# 1. UNIFIED KAFKA STREAM MCP TOOL
 # ============================================================
 
 @mcp_server.tool()
@@ -102,13 +102,7 @@ def query_kafka_stream(
         limit: Maximum number of flight records to return (default: 15).
 
     Returns:
-        Dict[str, Any]: Structured JSON response containing:
-            - status (str): 'success' or 'error'
-            - source (str): 'kafka_in_memory_stream'
-            - total_matches (int): Total number of matching aircraft in the Kafka stream
-            - returned_count (int): Number of flights returned in this batch
-            - flights (list): Array of matching flight objects with telemetry, aircraft model, route, speed, altitude, and coordinates.
-            - applied_region / province_details (dict, optional): Provincial polygon metadata when region filter is used.
+        Dict[str, Any]: Structured JSON response containing matched aircraft list with telemetry, model, route, speed, altitude, and coordinates.
     """
     return kafka_store.query_flights(
         query=query,
@@ -121,10 +115,202 @@ def query_kafka_stream(
     )
 
 
-# Registry of all MCP Tools available on this Server
+# ============================================================
+# 🚨 2. EMERGENCY & SQUAWK ALERTS MCP TOOL
+# ============================================================
+
+@mcp_server.tool()
+@audit_tool("get_emergency_flights")
+def get_emergency_flights(
+    emergency_type: str = "ALL",
+    include_rapid_descent: bool = True,
+    limit: int = 15
+) -> Dict[str, Any]:
+    """Detects aircraft broadcasting emergency squawk codes (7700, 7600, 7500) or experiencing severe emergency descent in Turkish airspace.
+
+    Args:
+        emergency_type: Emergency squawk code filter ('7700' for General Emergency, '7600' for Lost Radio Comms, '7500' for Hijacking, or 'ALL').
+        include_rapid_descent: Whether to flag aircraft descending faster than -3000 feet/min.
+        limit: Maximum number of emergency flight records to return.
+
+    Returns:
+        Dict[str, Any]: Emergency status, detected alert flights, squawk descriptions, and alert level.
+    """
+    return kafka_store.find_emergency_flights(
+        emergency_type=emergency_type,
+        include_rapid_descent=include_rapid_descent,
+        limit=limit
+    )
+
+
+# ============================================================
+# 📍 3. NEARBY AIRCRAFT RADIUS MCP TOOL
+# ============================================================
+
+@mcp_server.tool()
+@audit_tool("find_nearby_aircraft")
+def find_nearby_aircraft(
+    location: str = "",
+    latitude: Optional[float] = None,
+    longitude: Optional[float] = None,
+    radius_km: float = 50.0,
+    min_altitude_feet: Optional[float] = None,
+    limit: int = 15
+) -> Dict[str, Any]:
+    """Finds aircraft within a specified geographic radius (km) around any Turkish city, airport, or exact coordinate (lat, lon) sorted by distance.
+
+    Args:
+        location: City/Province name (e.g. 'Ankara', 'İstanbul', 'Erzurum') or airport code (e.g. 'IST', 'ESB', 'AYT').
+        latitude: Center latitude (optional if location provided).
+        longitude: Center longitude (optional if location provided).
+        radius_km: Search radius in kilometers (default: 50.0 km).
+        min_altitude_feet: Optional minimum altitude filter.
+        limit: Maximum number of nearby flight records to return.
+
+    Returns:
+        Dict[str, Any]: List of aircraft sorted by ascending distance in kilometers with center metadata.
+    """
+    return kafka_store.find_nearby_aircraft(
+        location=location,
+        latitude=latitude,
+        longitude=longitude,
+        radius_km=radius_km,
+        min_altitude_feet=min_altitude_feet,
+        limit=limit
+    )
+
+
+# ============================================================
+# 🛫 4. AIRPORT TRAFFIC & APPROACH MCP TOOL
+# ============================================================
+
+@mcp_server.tool()
+@audit_tool("get_airport_traffic")
+def get_airport_traffic(
+    airport_code: str,
+    traffic_type: str = "ALL",
+    airline: str = "",
+    limit: int = 15
+) -> Dict[str, Any]:
+    """Retrieves live arriving (inbound/approach), departing (outbound), or nearby terminal traffic for any Turkish airport (IST, SAW, ESB, AYT, ADB, etc.).
+
+    Args:
+        airport_code: 3-letter IATA code (e.g. 'IST', 'SAW', 'ESB', 'AYT', 'ADB', 'DLM', 'BJV', 'TZX') or 4-letter ICAO code.
+        traffic_type: Filter traffic type ('ARRIVALS', 'DEPARTURES', or 'ALL').
+        airline: Optional airline filter (e.g. 'THY', 'PGT', 'TKJ').
+        limit: Maximum number of flights to return.
+
+    Returns:
+        Dict[str, Any]: Airport metadata, arrival/departure counts, and detailed flight schedules in terminal area.
+    """
+    return kafka_store.get_airport_traffic(
+        airport_code=airport_code,
+        traffic_type=traffic_type,
+        airline=airline,
+        limit=limit
+    )
+
+
+# ============================================================
+# 📈 5. VERTICAL TELEMETRY & CLIMB/DESCENT MCP TOOL
+# ============================================================
+
+@mcp_server.tool()
+@audit_tool("get_vertical_rate_flights")
+def get_vertical_rate_flights(
+    flight_phase: str = "ALL",
+    min_vertical_speed_fpm: Optional[float] = None,
+    region: str = "",
+    airline: str = "",
+    limit: int = 15
+) -> Dict[str, Any]:
+    """Filters aircraft by vertical climb or descent speed rates and flight phases (climbing, descending, cruising).
+
+    Args:
+        flight_phase: Target flight phase ('CLIMBING' for > +500 fpm, 'DESCENDING' for < -500 fpm, 'CRUISING' for level flight, or 'ALL').
+        min_vertical_speed_fpm: Minimum vertical speed threshold in feet per minute (e.g. 1500 for steep climbs/descents).
+        region: Optional Turkish province or region filter.
+        airline: Optional airline filter.
+        limit: Maximum number of flights to return.
+
+    Returns:
+        Dict[str, Any]: List of aircraft with vertical speed (fpm and m/s), flight phase, and altitude profiles.
+    """
+    return kafka_store.get_vertical_rate_flights(
+        flight_phase=flight_phase,
+        min_vertical_speed_fpm=min_vertical_speed_fpm,
+        region=region,
+        airline=airline,
+        limit=limit
+    )
+
+
+# ============================================================
+# 🌍 6. TRANSIT OVERFLIGHT CORRIDOR MCP TOOL
+# ============================================================
+
+@mcp_server.tool()
+@audit_tool("get_transit_flights")
+def get_transit_flights(
+    min_altitude_feet: Optional[float] = 28000.0,
+    airline: str = "",
+    limit: int = 15
+) -> Dict[str, Any]:
+    """Identifies international transit overflights cruising through Turkish airspace without landing or departing in Turkey.
+
+    Args:
+        min_altitude_feet: Minimum cruising altitude in feet (default: 28,000 ft).
+        airline: Optional airline filter (e.g. 'UAE', 'QTR', 'BAW', 'DLH').
+        limit: Maximum number of transit flights to return.
+
+    Returns:
+        Dict[str, Any]: International overflight records with origin, destination, corridor info, and cruising telemetry.
+    """
+    return kafka_store.get_transit_flights(
+        min_altitude_feet=min_altitude_feet,
+        airline=airline,
+        limit=limit
+    )
+
+
+# ============================================================
+# 📊 7. FLEET & AIRCRAFT MODEL ANALYTICS MCP TOOL
+# ============================================================
+
+@mcp_server.tool()
+@audit_tool("get_fleet_aircraft_analytics")
+def get_fleet_aircraft_analytics(
+    aircraft_family: str = "",
+    airline: str = "",
+    include_breakdown: bool = True
+) -> Dict[str, Any]:
+    """Calculates active fleet statistics, aircraft model distributions (Boeing 737/777/787, Airbus A320/A350), and wide-body vs narrow-body shares.
+
+    Args:
+        aircraft_family: Model family code filter (e.g. 'B77W', 'A359', 'B738', 'A21N').
+        airline: Specific airline filter (e.g. 'THY', 'PGT').
+        include_breakdown: Whether to return full percentage breakdown.
+
+    Returns:
+        Dict[str, Any]: Top aircraft models, wide-body vs narrow-body counts, and active airline fleet breakdown in Turkish airspace.
+    """
+    return kafka_store.get_fleet_aircraft_analytics(
+        aircraft_family=aircraft_family,
+        airline=airline,
+        include_breakdown=include_breakdown
+    )
+
+
+# Registry of all FastMCP Tools available on this Server
 MCP_TOOLS_REGISTRY = {
     "query_kafka_stream": query_kafka_stream,
-    "kafka_query_stream": query_kafka_stream
+    "kafka_query_stream": query_kafka_stream,
+    "get_emergency_flights": get_emergency_flights,
+    "find_nearby_aircraft": find_nearby_aircraft,
+    "get_airport_traffic": get_airport_traffic,
+    "get_vertical_rate_flights": get_vertical_rate_flights,
+    "get_transit_flights": get_transit_flights,
+    "get_fleet_aircraft_analytics": get_fleet_aircraft_analytics
 }
 
 
@@ -160,6 +346,10 @@ async def api_tools_execute(request):
             args["min_speed_kmh"] = args.pop("min_speed")
         if "speed" in args and "min_speed_kmh" not in args:
             args["min_speed_kmh"] = args.pop("speed")
+        if "airport" in args and "airport_code" not in args:
+            args["airport_code"] = args.pop("airport")
+        if "city" in args and "location" not in args:
+            args["location"] = args.pop("city")
 
         res = tool_func(**args)
         return JSONResponse(res)
@@ -191,18 +381,43 @@ async def api_chat(request):
 
 
 async def api_status(request):
-    """Returns server and agent status info."""
+    """Returns server and agent status info with full list of active FastMCP tools."""
     agent_info = get_agent_info()
     return JSONResponse({
         "status": "online",
-        "service": "Semalar Kafka Flight MCP & AI Cockpit",
+        "service": "Semalar Kafka Flight FastMCP & AI Cockpit",
         "provider": agent_info["provider"],
         "model": agent_info["model"],
         "mcp_url": "http://localhost:8000/mcp",
+        "total_tools": len(MCP_TOOLS_REGISTRY),
         "tools": [
             {
                 "name": "query_kafka_stream",
                 "description": "Unified multi-filter query for Kafka live telemetry (81 provinces, speed, altitude, airline, flight ID, stats)"
+            },
+            {
+                "name": "get_emergency_flights",
+                "description": "Detects squawk 7700/7600/7500 emergencies and rapid descent anomalies"
+            },
+            {
+                "name": "find_nearby_aircraft",
+                "description": "Radius-based nearest aircraft search around any city, airport, or coordinates"
+            },
+            {
+                "name": "get_airport_traffic",
+                "description": "Live inbound/approach, outbound departure, and terminal traffic for Turkish airports"
+            },
+            {
+                "name": "get_vertical_rate_flights",
+                "description": "Vertical speed telemetry analysis (climbing, descending, cruising levels)"
+            },
+            {
+                "name": "get_transit_flights",
+                "description": "International transit overflights cruising through Turkish airspace"
+            },
+            {
+                "name": "get_fleet_aircraft_analytics",
+                "description": "Active aircraft model breakdown, wide vs narrow-body shares, and airline fleet distribution"
             }
         ]
     })
@@ -244,7 +459,7 @@ async def api_kafka_fastest(request):
     try:
         min_speed = float(request.query_params.get("min_speed", 800))
         limit = int(request.query_params.get("limit", 20))
-        result = kafka_store.find_flights_above_speed(min_speed_kmh=min_speed, limit=limit)
+        result = kafka_store.query_flights(min_speed_kmh=min_speed, limit=limit)
         return JSONResponse(result)
     except Exception as e:
         return JSONResponse({"status": "error", "error": str(e)}, status_code=500)
@@ -353,14 +568,16 @@ if os.path.exists(FRONTEND_DIR):
 if __name__ == "__main__":
     print("=" * 65)
     print("✈️ Semalar — Apache Kafka Live Flight Telemetry & AI Cockpit")
-    print("📡 MCP Streamable HTTP       : http://localhost:8000/mcp")
+    print("📡 FastMCP Streamable HTTP   : http://localhost:8000/mcp")
     print("⚡ Kafka Telemetry Cockpit UI: http://localhost:8000")
+    print(f"🛠️ Active FastMCP Tools ({len(MCP_TOOLS_REGISTRY)}):")
+    for t_name in MCP_TOOLS_REGISTRY:
+        if t_name != "kafka_query_stream":
+            print(f"   • {t_name}")
     print("🇹🇷 Real-time Ingestion       : ALL Live Turkey Airspace Flights ➔ Kafka (15s Loop)")
     print("📊 Apache Kafka UI Panel     : http://localhost:8080")
     print("=" * 65)
     print("👉 Open in Browser : http://localhost:8000")
-    print("⚠️  NOTE FOR WINDOWS: Do NOT navigate to 'http://0.0.0.0:8000' in browser;")
-    print("   always use 'http://localhost:8000' on the local machine!")
     print("=" * 65)
     start_streamer_if_needed()
     uvicorn.run(app, host="0.0.0.0", port=8000)

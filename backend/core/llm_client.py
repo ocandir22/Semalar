@@ -151,11 +151,11 @@ def _print_tool_result(tool_name: str, parsed_json: dict, elapsed_ms: float):
     status_icon = "✅" if status == "success" else ("⚠️" if status == "empty" else "❌")
 
     summary_lines = []
-    if tool_name == "query_kafka_stream":
-        tot = parsed_json.get("total_matched", 0)
+    if tool_name in ["query_kafka_stream", "kafka_query_stream"]:
+        tot = parsed_json.get("total_matches", parsed_json.get("total_matched", 0))
         ret = parsed_json.get("returned_count", 0)
-        prov = parsed_json.get("filter_province")
-        prov_str = f" | İl: {prov}" if prov else ""
+        prov = parsed_json.get("applied_region") or parsed_json.get("filter_province")
+        prov_str = f" | Bölge: {prov}" if prov else ""
         summary_lines.append(f"{ret} uçak listelendi (Toplam: {tot}{prov_str})")
         flights = parsed_json.get("flights", [])[:3]
         for idx, fl in enumerate(flights, 1):
@@ -168,6 +168,49 @@ def _print_tool_result(tool_name: str, parsed_json: dict, elapsed_ms: float):
             )
         if len(parsed_json.get("flights", [])) > 3:
             summary_lines.append(f"  ... ve {len(parsed_json.get('flights', [])) - 3} uçak daha.")
+    elif tool_name == "get_emergency_flights":
+        tot = parsed_json.get("total_matches", 0)
+        detected = parsed_json.get("emergency_detected", False)
+        alert_str = "🚨 ACİL DURUM TESPİT EDİLDİ!" if detected else "✅ Normal (Aktif acil durum yok)"
+        summary_lines.append(f"{alert_str} ({tot} uçak)")
+        for fl in parsed_json.get("emergency_flights", [])[:3]:
+            alert = fl.get("emergency_alert", {})
+            summary_lines.append(f"  • {fl.get('flight_number') or fl.get('callsign')}: {', '.join(alert.get('reasons', []))}")
+    elif tool_name == "find_nearby_aircraft":
+        tot = parsed_json.get("total_matches", 0)
+        center = parsed_json.get("center", {})
+        c_name = center.get("name", "Merkez")
+        r_km = center.get("radius_km", 50)
+        summary_lines.append(f"{c_name} etrafında {r_km} km yarıçapta {tot} uçak bulundu")
+        for idx, fl in enumerate(parsed_json.get("flights", [])[:3], 1):
+            dist = fl.get("distance_km", 0)
+            summary_lines.append(f"  {idx}. {fl.get('flight_number') or fl.get('callsign')} ({fl.get('aircraft_model')}) ➔ Mesafe: {dist:.1f} km | İrtifa: {fl.get('telemetry', {}).get('altitude_feet')} ft")
+    elif tool_name == "get_airport_traffic":
+        ap = parsed_json.get("airport", {})
+        ap_name = ap.get("name") or ap.get("iata") or "Havalimanı"
+        counts = parsed_json.get("counts", {})
+        summary_lines.append(f"{ap_name} Trafiği: İniş {counts.get('arrivals', 0)} | Kalkış {counts.get('departures', 0)} | Yaklaşma {counts.get('active_approach', 0)}")
+    elif tool_name == "get_vertical_rate_flights":
+        tot = parsed_json.get("total_matches", 0)
+        phase = parsed_json.get("phase_filter", "ALL")
+        summary_lines.append(f"Dikey Hız Analizi [{phase}]: {tot} uçuş eşleşti")
+        for idx, fl in enumerate(parsed_json.get("flights", [])[:3], 1):
+            vp = fl.get("vertical_profile", {})
+            summary_lines.append(f"  {idx}. {fl.get('flight_number') or fl.get('callsign')} ➔ Faz: {vp.get('phase')} | Dikey Hız: {vp.get('vertical_speed_fpm')} fpm ({vp.get('vertical_speed_mps')} m/s)")
+    elif tool_name == "get_transit_flights":
+        tot = parsed_json.get("total_matches", 0)
+        summary_lines.append(f"Uluslararası Üst Geçiş (Transit): {tot} uçuş seyir halinde")
+        for idx, fl in enumerate(parsed_json.get("transit_flights", [])[:3], 1):
+            tc = fl.get("transit_corridor", {})
+            summary_lines.append(f"  {idx}. {fl.get('flight_number') or fl.get('callsign')} ({fl.get('aircraft_model')}) ➔ Koridor: {tc.get('corridor_display')}")
+    elif tool_name == "get_fleet_aircraft_analytics":
+        tot = parsed_json.get("total_aircraft_analyzed", 0)
+        bd = parsed_json.get("body_type_distribution", {})
+        top_m = parsed_json.get("top_aircraft_models", [])[:3]
+        top_str = ", ".join([f"{m['model']} (%{m['percentage']})" for m in top_m])
+        summary_lines.append(f"Filo Analizi: {tot} uçak | Geniş Gövde: {bd.get('wide_body', 0)} | Dar Gövde: {bd.get('narrow_body_or_regional', 0)}")
+        if top_str:
+            summary_lines.append(f"  En Çok Uçan Modeller: {top_str}")
     elif tool_name == "get_flight_info":
         if status == "success":
             aircraft = parsed_json.get("aircraft", {})
