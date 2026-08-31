@@ -63,10 +63,21 @@ def _clean_tool_arguments(args: dict) -> dict:
     cleaned = {}
     for k, v in (args or {}).items():
         if isinstance(v, str):
-            if v.strip().lower() in ["true", "t", "yes", "1"]:
+            v_strip = v.strip()
+            if v_strip.lower() in ["true", "t", "yes"]:
                 cleaned[k] = True
-            elif v.strip().lower() in ["false", "f", "no", "0"]:
+            elif v_strip.lower() in ["false", "f", "no"]:
                 cleaned[k] = False
+            elif re.match(r"^-?\d+$", v_strip):
+                try:
+                    cleaned[k] = int(v_strip)
+                except ValueError:
+                    cleaned[k] = v
+            elif re.match(r"^-?\d+\.\d+$", v_strip):
+                try:
+                    cleaned[k] = float(v_strip)
+                except ValueError:
+                    cleaned[k] = v
             else:
                 cleaned[k] = v
         else:

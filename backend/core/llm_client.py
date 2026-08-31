@@ -242,15 +242,25 @@ def _print_agent_final_response(answer: str, elapsed_total_s: float):
 
 
 def build_gemini_tools(tool_definitions: List[Dict[str, Any]]):
-    """Converts local tool definitions into Gemini types.Tool format."""
+    """Converts local tool definitions into Gemini types.Tool format with exact type mapping."""
     from google.genai import types
     function_declarations = []
     for tool_def in tool_definitions:
         raw_props = tool_def.get("parameters", {}).get("properties", {})
         clean_props = {}
         for prop_name, prop_info in raw_props.items():
+            raw_t = str(prop_info.get("type", "STRING")).upper()
+            if raw_t in ["NUMBER", "FLOAT", "DOUBLE"]:
+                p_type = "NUMBER"
+            elif raw_t in ["INTEGER", "INT"]:
+                p_type = "INTEGER"
+            elif raw_t in ["BOOLEAN", "BOOL"]:
+                p_type = "BOOLEAN"
+            else:
+                p_type = "STRING"
+
             clean_props[prop_name] = {
-                "type": prop_info.get("type", "STRING").upper(),
+                "type": p_type,
                 "description": prop_info.get("description", "")
             }
         
