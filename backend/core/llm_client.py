@@ -1,7 +1,7 @@
 """
 Core LLM Client — Multi-Provider AI Engine (Gemini, Groq, OpenRouter, Ollama, OpenAI, DeepSeek)
 Provides unified function calling, resilient error handling, model fallbacks,
-and real-time ANSI terminal observability for Semalar independent projects.
+and real-time extraction of genuine model thinking/reasoning (Chain of Thought / <think>).
 """
 
 import os
@@ -10,7 +10,7 @@ import json
 import re
 import asyncio
 import time
-from typing import Dict, Any, List, Optional, Callable
+from typing import Dict, Any, List, Optional, Callable, Tuple
 from dotenv import load_dotenv
 
 try:
@@ -94,37 +94,63 @@ def get_agent_info() -> Dict[str, str]:
     }
 
 
-def clean_model_output(text: str) -> str:
-    """Removes internal reasoning tags or cleanup formatting."""
-    if not text:
-        return ""
-    cleaned = re.sub(r"<think>[\s\S]*?</think>", "", text)
-    return cleaned.strip()
+def extract_real_llm_reasoning(raw_content: str, message_obj=None) -> Tuple[Optional[str], str]:
+    """Extracts genuine internal thinking/reasoning (<think>...</think>, reasoning_content, reasoning)
+    and cleanly separates it from the final assistant answer text.
+    """
+    reasoning_blocks = []
+
+    # 1. Message object attributes (OpenAI reasoning_content or reasoning)
+    if message_obj:
+        for attr in ["reasoning_content", "reasoning"]:
+            val = getattr(message_obj, attr, None)
+            if val and str(val).strip():
+                reasoning_blocks.append(str(val).strip())
+
+    # 2. Extract <think>...</think> or <thought>...</thought> from content string
+    clean_text = raw_content or ""
+    if clean_text:
+        th_matches = re.findall(r"<(?:think|thought)>([\s\S]*?)</(?:think|thought)>", clean_text, re.IGNORECASE)
+        for m in th_matches:
+            if m.strip() and m.strip() not in reasoning_blocks:
+                reasoning_blocks.append(m.strip())
+        
+        # Remove thinking tags from user-facing answer text
+        clean_text = re.sub(r"<(?:think|thought)>[\s\S]*?</(?:think|thought)>", "", clean_text, flags=re.IGNORECASE).strip()
+
+    combined_reasoning = "\n\n".join(reasoning_blocks).strip() if reasoning_blocks else None
+    return combined_reasoning, clean_text
 
 
-def extract_text_from_response(response) -> str:
-    """Extracts text from candidate parts safely without triggering non-text warnings."""
-    if not response:
-        return "(No response received)"
-    try:
-        candidates = getattr(response, "candidates", None)
-        if candidates and len(candidates) > 0:
-            content = getattr(candidates[0], "content", None)
-            if content and getattr(content, "parts", None):
-                text_parts = []
-                for part in content.parts:
-                    text_val = getattr(part, "text", None)
-                    if text_val:
-                        text_parts.append(text_val)
-                if text_parts:
-                    return "".join(text_parts)
-    except Exception:
-        pass
+def extract_gemini_thought_and_text(response) -> Tuple[Optional[str], str]:
+    """Extracts genuine Gemini model thinking parts and user-facing text."""
+    thoughts = []
+    text_parts = []
+    if response and hasattr(response, "candidates") and response.candidates:
+        cand = response.candidates[0]
+        if hasattr(cand, "content") and cand.content and hasattr(cand.content, "parts"):
+            for p in cand.content.parts:
+                is_thought = getattr(p, "thought", False) or getattr(p, "thought_process", False)
+                text = getattr(p, "text", "") or ""
+                if is_thought:
+                    if text.strip():
+                        thoughts.append(text.strip())
+                elif text:
+                    th, cl = extract_real_llm_reasoning(text)
+                    if th:
+                        thoughts.append(th)
+                    if cl:
+                        text_parts.append(cl)
+    if not text_parts and hasattr(response, "text") and response.text:
+        th, cl = extract_real_llm_reasoning(response.text)
+        if th:
+            thoughts.append(th)
+        if cl:
+            text_parts.append(cl)
 
-    try:
-        return response.text or ""
-    except Exception:
-        return str(response)
+    full_thoughts = "\n\n".join(thoughts).strip() if thoughts else None
+    full_text = "".join(text_parts).strip()
+    return full_thoughts, full_text
 
 
 def _print_agent_banner(user_query: str, project_label: str, provider: str, model_name: str):
@@ -147,61 +173,53 @@ def _print_tool_decision(tool_name: str, tool_args: dict):
 
 def _print_tool_result(tool_name: str, parsed_json: dict, elapsed_ms: float):
     """Prints a concise summary of the executed MCP tool result to the terminal."""
-    status = parsed_json.get("status", "unknown")
+    status = parsed_json.get("status", "unknown") if isinstance(parsed_json, dict) else "success"
     status_icon = "✅" if status == "success" else ("⚠️" if status == "empty" else "❌")
 
     summary_lines = []
-    if tool_name == "query_kafka_stream":
-        tot = parsed_json.get("total_matched", 0)
-        ret = parsed_json.get("returned_count", 0)
-        prov = parsed_json.get("filter_province")
-        prov_str = f" | İl: {prov}" if prov else ""
-        summary_lines.append(f"{ret} uçak listelendi (Toplam: {tot}{prov_str})")
-        flights = parsed_json.get("flights", [])[:3]
-        for idx, fl in enumerate(flights, 1):
-            route = fl.get("route")
-            route_str = route.get("display") if isinstance(route, dict) else str(route or "N/A")
-            summary_lines.append(
-                f"  {idx}. {fl.get('flight_number') or fl.get('callsign')} ({fl.get('aircraft_model')}) "
-                f"➔ Hız: {fl.get('telemetry', {}).get('ground_speed_kmh')} km/s | "
-                f"İrtifa: {fl.get('telemetry', {}).get('altitude_feet')} ft | Rota: {route_str}"
-            )
-        if len(parsed_json.get("flights", [])) > 3:
-            summary_lines.append(f"  ... ve {len(parsed_json.get('flights', [])) - 3} uçak daha.")
-    elif tool_name == "get_flight_info":
-        if status == "success":
-            aircraft = parsed_json.get("aircraft", {})
-            model = aircraft.get("model") if isinstance(aircraft, dict) else aircraft
-            reg = aircraft.get("registration") if isinstance(aircraft, dict) else ""
-            reg_str = f" ({reg})" if reg else ""
-            summary_lines.append(
-                f"Uçuş: {parsed_json.get('flight_number')} | Model: {model}{reg_str} | "
-                f"Hız: {parsed_json.get('ground_speed_kmh')} km/s | İrtifa: {parsed_json.get('altitude_feet')} ft"
-            )
+    if isinstance(parsed_json, dict):
+        if tool_name in ["query_kafka_stream", "kafka_query_stream"]:
+            tot = parsed_json.get("total_matches", parsed_json.get("total_matched", 0))
+            ret = parsed_json.get("returned_count", 0)
+            prov = parsed_json.get("applied_region") or parsed_json.get("filter_province")
+            prov_str = f" | Bölge: {prov}" if prov else ""
+            summary_lines.append(f"{ret} uçak listelendi (Toplam: {tot}{prov_str})")
+        elif tool_name == "get_emergency_flights":
+            tot = parsed_json.get("total_matches", 0)
+            detected = parsed_json.get("emergency_detected", False)
+            alert_str = "🚨 ACİL DURUM TESPİT EDİLDİ!" if detected else "✅ Normal (Aktif acil durum yok)"
+            summary_lines.append(f"{alert_str} ({tot} uçak)")
+        elif tool_name == "find_nearby_aircraft":
+            tot = parsed_json.get("total_matches", 0)
+            center = parsed_json.get("center", {})
+            c_name = center.get("name", "Merkez")
+            r_km = center.get("radius_km", 50)
+            summary_lines.append(f"{c_name} etrafında {r_km} km yarıçapta {tot} uçak bulundu")
+        elif tool_name == "get_airport_traffic":
+            ap = parsed_json.get("airport", {})
+            ap_name = ap.get("name") or ap.get("iata") or "Havalimanı"
+            counts = parsed_json.get("counts", {})
+            summary_lines.append(f"{ap_name} Trafiği: İniş {counts.get('arrivals', 0)} | Kalkış {counts.get('departures', 0)}")
+        elif tool_name == "get_vertical_rate_flights":
+            tot = parsed_json.get("total_matches", 0)
+            phase = parsed_json.get("phase_filter", "ALL")
+            summary_lines.append(f"Dikey Hız Analizi [{phase}]: {tot} uçuş eşleşti")
+        elif tool_name == "get_transit_flights":
+            tot = parsed_json.get("total_matches", 0)
+            summary_lines.append(f"Uluslararası Üst Geçiş (Transit): {tot} uçuş seyir halinde")
+        elif tool_name == "get_fleet_aircraft_analytics":
+            tot = parsed_json.get("total_aircraft_analyzed", 0)
+            bd = parsed_json.get("body_type_distribution", {})
+            summary_lines.append(f"Filo Analizi: {tot} uçak | Geniş Gövde: {bd.get('wide_body', 0)} | Dar Gövde: {bd.get('narrow_body_or_regional', 0)}")
         else:
-            summary_lines.append(f"Mesaj: {parsed_json.get('message', 'Bulunamadı')}")
-    elif tool_name == "search_airline_flights":
-        tot = parsed_json.get("total_active_flights_found", 0)
-        ret = parsed_json.get("returned_count", 0)
-        summary_lines.append(f"Havayolu: {parsed_json.get('airline_code')} | {ret}/{tot} uçuş listelendi")
-    elif tool_name == "get_flights_over_region":
-        tot = parsed_json.get("total_flights_found", 0)
-        reg_name = parsed_json.get("applied_region", "Bölge")
-        summary_lines.append(f"{reg_name} üzerinde {tot} uçuş tespit edildi")
-    elif tool_name == "get_airport_info":
-        summary_lines.append(f"{parsed_json.get('name')} ({parsed_json.get('airport_code')}) | {parsed_json.get('city')}, {parsed_json.get('country')}")
-    elif tool_name == "get_most_tracked_flights":
-        tot = parsed_json.get("total_tracked", 0)
-        summary_lines.append(f"En çok takip edilen {tot} uçuş getirildi")
+            summary_lines.append(f"İşlem tamamlandı ({status})")
     else:
-        summary_lines.append(f"İşlem tamamlandı ({status})")
+        summary_lines.append(f"İşlem tamamlandı")
 
     print(f"  {_ANSI_GREEN}⚡ [MCP Tool Sonucu — {elapsed_ms:.1f}ms]:{_ANSI_RESET}")
     print(f"     {_ANSI_BOLD}Durum       :{_ANSI_RESET} {status_icon} {status}")
     if summary_lines:
         print(f"     {_ANSI_BOLD}Eşleşme     :{_ANSI_RESET} {summary_lines[0]}")
-        for sub in summary_lines[1:]:
-            print(f"       {_ANSI_GRAY}{sub}{_ANSI_RESET}")
 
 
 def _print_agent_final_response(answer: str, elapsed_total_s: float):
@@ -245,15 +263,32 @@ def build_gemini_tools(tool_definitions: List[Dict[str, Any]]):
 
 
 def build_openai_tools(tool_definitions: List[Dict[str, Any]]):
-    """Converts local tool definitions to standard OpenAI / Groq tool definitions."""
+    """Converts local tool definitions to standard OpenAI / Groq tool definitions with robust type handling."""
     tools = []
     for tool_def in tool_definitions:
+        params = tool_def.get("parameters", {"type": "object", "properties": {}})
+        raw_props = params.get("properties", {})
+        clean_props = {}
+        for p_name, p_info in raw_props.items():
+            p_dict = dict(p_info)
+            # Prevent Groq/Qwen XML tool parser validation error on booleans
+            if p_dict.get("type") == "boolean":
+                p_dict = {
+                    "anyOf": [{"type": "boolean"}, {"type": "string"}],
+                    "description": p_dict.get("description", "")
+                }
+            clean_props[p_name] = p_dict
+
         tools.append({
             "type": "function",
             "function": {
                 "name": tool_def["name"],
                 "description": tool_def["description"],
-                "parameters": tool_def.get("parameters", {"type": "object", "properties": {}})
+                "parameters": {
+                    "type": "object",
+                    "properties": clean_props,
+                    "required": params.get("required", [])
+                }
             }
         })
     return tools
@@ -265,63 +300,31 @@ def build_thought_process(
     reasoning_text: Optional[str] = None,
     total_elapsed_seconds: float = 0.0
 ) -> Dict[str, Any]:
-    """Builds a structured step-by-step thinking and MCP reasoning breakdown for the UI thinking block."""
-    steps = []
+    """Builds genuine LLM thinking & real FastMCP tool execution traces without any synthetic filler."""
+    tool_traces = []
+    for tc in tool_calls_executed:
+        t_name = tc.get("name", "")
+        t_args = tc.get("args", {})
+        t_res = tc.get("result", {})
+        
+        matched_count = 0
+        if isinstance(t_res, dict):
+            matched_count = t_res.get("total_matches", t_res.get("returned_count", len(t_res.get("flights", []))))
+        elif isinstance(t_res, list):
+            matched_count = len(t_res)
 
-    # 1. Intent & Parameter Mapping Stage
-    steps.append({
-        "stage": "intent",
-        "icon": "🎯",
-        "title": "Kullanıcı Niyeti & Parametre Çözümleme",
-        "detail": f"Kullanıcı sorgusu incelendi: \"{user_query}\". Türkiye 81 il poligonu, irtifa, hız ve havayolu filtreleri haritalandı."
-    })
-
-    # 2. Tool Execution Stage
-    if tool_calls_executed:
-        for tc in tool_calls_executed:
-            t_name = tc.get("name", "query_kafka_stream")
-            t_args = tc.get("args", {})
-            t_res = tc.get("result", {})
-
-            matched_count = 0
-            if isinstance(t_res, dict):
-                matched_count = t_res.get("total_matches", len(t_res.get("flights", [])))
-            elif isinstance(t_res, list):
-                matched_count = len(t_res)
-
-            steps.append({
-                "stage": "tool_call",
-                "icon": "⚙️",
-                "title": f"FastMCP Tool Kararı: `{t_name}`",
-                "detail": f"Parametreler: {json.dumps(t_args, ensure_ascii=False)}",
-                "result_summary": f"Kafka topic 'live-flights' havuzundan {matched_count} eşleşen telemetri kaydı çekildi."
-            })
-    else:
-        steps.append({
-            "stage": "direct_reasoning",
-            "icon": "💡",
-            "title": "Doğrudan Yanıt Kararı",
-            "detail": "Kullanıcı sorusu genel havacılık / radar kavramı içerdiğinden ek telemetri filtrelemesine ihtiyaç duyulmadı."
+        tool_traces.append({
+            "tool_name": t_name,
+            "arguments": t_args,
+            "matched_records": matched_count,
+            "status": t_res.get("status", "success") if isinstance(t_res, dict) else "success"
         })
 
-    # 3. Telemetry Synthesis Stage
-    steps.append({
-        "stage": "synthesis",
-        "icon": "📝",
-        "title": "Telemetri Sentezi ve Yanıt Üretimi",
-        "detail": "Elde edilen gerçek zamanlı telemetriler (irtifa, hız, rota, uçak tipi) analiz edilerek Türkçe dilbilgisine uygun olarak hazırlandı."
-    })
-
-    summary = (
-        f"Kullanıcı talebi analiz edildi, {len(tool_calls_executed)} MCP aracı ile Kafka telemetrisi sorgulandı."
-        if tool_calls_executed else "Kullanıcı talebi doğrudan yanıtlandı."
-    )
-
     return {
-        "summary": summary,
+        "raw_reasoning": reasoning_text.strip() if reasoning_text and reasoning_text.strip() else None,
+        "tool_traces": tool_traces,
         "duration_seconds": round(total_elapsed_seconds, 2),
-        "steps": steps,
-        "raw_reasoning": reasoning_text if reasoning_text else None
+        "tools_count": len(tool_calls_executed)
     }
 
 
@@ -362,11 +365,12 @@ async def run_llm_cycle(
     project_label: str = "Aviation Project"
 ) -> Dict[str, Any]:
     """Executes a full AI Agent turn (reasoning ➔ tool calling ➔ result synthesis)
-    for any independent project using the configured LLM provider.
+    with genuine thinking extraction and zero hardcoded templates.
     """
     t_start = time.perf_counter()
     provider = LLM_PROVIDER
     tool_calls_executed = []
+    collected_reasoning_parts = []
 
     # Print request banner
     model_name = get_agent_info()["model"]
@@ -410,6 +414,10 @@ async def run_llm_cycle(
                 "error": str(e)
             }
 
+        turn1_thought, _ = extract_gemini_thought_and_text(response)
+        if turn1_thought:
+            collected_reasoning_parts.append(turn1_thought)
+
         if response.function_calls:
             contents.append(response.candidates[0].content)
             tool_response_parts = []
@@ -449,14 +457,17 @@ async def run_llm_cycle(
                     contents,
                     types.GenerateContentConfig(tools=gemini_tools, temperature=0.0, system_instruction=system_instruction)
                 )
-                answer = extract_text_from_response(final_response)
-                cleaned_answer = clean_model_output(answer)
+                turn2_thought, cleaned_answer = extract_gemini_thought_and_text(final_response)
+                if turn2_thought:
+                    collected_reasoning_parts.append(turn2_thought)
+
                 _print_agent_final_response(cleaned_answer, time.perf_counter() - t_start)
 
+                all_reasoning = "\n\n".join(collected_reasoning_parts).strip() if collected_reasoning_parts else None
                 thought_process = build_thought_process(
                     user_query=user_query,
                     tool_calls_executed=tool_calls_executed,
-                    reasoning_text=None,
+                    reasoning_text=all_reasoning,
                     total_elapsed_seconds=time.perf_counter() - t_start
                 )
 
@@ -480,14 +491,16 @@ async def run_llm_cycle(
                 }
         else:
             print(f"  {_ANSI_GRAY}ℹ️  [LLM Kararı]: Doğrudan Yanıt (Tool çağrısı gerekmedi){_ANSI_RESET}")
-            answer = extract_text_from_response(response)
-            cleaned_answer = clean_model_output(answer)
+            th, cleaned_answer = extract_gemini_thought_and_text(response)
+            if th:
+                collected_reasoning_parts.append(th)
             _print_agent_final_response(cleaned_answer, time.perf_counter() - t_start)
 
+            all_reasoning = "\n\n".join(collected_reasoning_parts).strip() if collected_reasoning_parts else None
             thought_process = build_thought_process(
                 user_query=user_query,
                 tool_calls_executed=[],
-                reasoning_text=None,
+                reasoning_text=all_reasoning,
                 total_elapsed_seconds=time.perf_counter() - t_start
             )
 
@@ -566,7 +579,10 @@ async def run_llm_cycle(
                 "error": str(e)
             }
 
-        reasoning_text = getattr(message, "reasoning_content", None) or getattr(message, "reasoning", None)
+        # Extract turn 1 genuine thinking
+        turn1_reasoning, _ = extract_real_llm_reasoning(message.content or "", message)
+        if turn1_reasoning:
+            collected_reasoning_parts.append(turn1_reasoning)
 
         if message.tool_calls:
             messages.append(message)
@@ -610,18 +626,18 @@ async def run_llm_cycle(
                     messages=messages,
                     temperature=0.0
                 )
-                raw_ans = final_completion.choices[0].message.content or ""
-                cleaned_ans = clean_model_output(raw_ans)
+                final_msg = final_completion.choices[0].message
+                turn2_reasoning, cleaned_ans = extract_real_llm_reasoning(final_msg.content or "", final_msg)
+                if turn2_reasoning:
+                    collected_reasoning_parts.append(turn2_reasoning)
+
                 _print_agent_final_response(cleaned_ans, time.perf_counter() - t_start)
 
-                final_msg = final_completion.choices[0].message
-                if not reasoning_text:
-                    reasoning_text = getattr(final_msg, "reasoning_content", None) or getattr(final_msg, "reasoning", None)
-
+                all_reasoning = "\n\n".join(collected_reasoning_parts).strip() if collected_reasoning_parts else None
                 thought_process = build_thought_process(
                     user_query=user_query,
                     tool_calls_executed=tool_calls_executed,
-                    reasoning_text=reasoning_text,
+                    reasoning_text=all_reasoning,
                     total_elapsed_seconds=time.perf_counter() - t_start
                 )
 
@@ -645,13 +661,14 @@ async def run_llm_cycle(
                 }
         else:
             print(f"  {_ANSI_GRAY}ℹ️  [LLM Kararı]: Doğrudan Yanıt (Tool çağrısı gerekmedi){_ANSI_RESET}")
-            cleaned_ans = clean_model_output(message.content or "")
+            _, cleaned_ans = extract_real_llm_reasoning(message.content or "", message)
             _print_agent_final_response(cleaned_ans, time.perf_counter() - t_start)
 
+            all_reasoning = "\n\n".join(collected_reasoning_parts).strip() if collected_reasoning_parts else None
             thought_process = build_thought_process(
                 user_query=user_query,
                 tool_calls_executed=[],
-                reasoning_text=reasoning_text,
+                reasoning_text=all_reasoning,
                 total_elapsed_seconds=time.perf_counter() - t_start
             )
 
