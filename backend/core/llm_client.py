@@ -118,6 +118,11 @@ def extract_real_llm_reasoning(raw_content: str, message_obj=None) -> Tuple[Opti
         # Remove thinking tags from user-facing answer text
         clean_text = re.sub(r"<(?:think|thought)>[\s\S]*?</(?:think|thought)>", "", clean_text, flags=re.IGNORECASE).strip()
 
+    # Fallback: if user answer became empty because the model put its entire text in <think>,
+    # preserve the text so user always sees the answer!
+    if not clean_text and reasoning_blocks:
+        clean_text = "\n\n".join(reasoning_blocks).strip()
+
     combined_reasoning = "\n\n".join(reasoning_blocks).strip() if reasoning_blocks else None
     return combined_reasoning, clean_text
 
@@ -137,19 +142,21 @@ def extract_gemini_thought_and_text(response) -> Tuple[Optional[str], str]:
                         thoughts.append(text.strip())
                 elif text:
                     th, cl = extract_real_llm_reasoning(text)
-                    if th:
+                    if th and th not in thoughts:
                         thoughts.append(th)
                     if cl:
                         text_parts.append(cl)
     if not text_parts and hasattr(response, "text") and response.text:
         th, cl = extract_real_llm_reasoning(response.text)
-        if th:
+        if th and th not in thoughts:
             thoughts.append(th)
         if cl:
             text_parts.append(cl)
 
     full_thoughts = "\n\n".join(thoughts).strip() if thoughts else None
     full_text = "".join(text_parts).strip()
+    if not full_text and full_thoughts:
+        full_text = full_thoughts
     return full_thoughts, full_text
 
 
@@ -475,6 +482,28 @@ async def run_llm_cycle(
                 if turn2_thought:
                     collected_reasoning_parts.append(turn2_thought)
 
+                # Fallback: Guarantee non-empty user answer
+                if not cleaned_answer or not cleaned_answer.strip():
+                    if tool_calls_executed:
+                        t_res = tool_calls_executed[-1].get("result", {})
+                        flights = t_res.get("flights", []) if isinstance(t_res, dict) else (t_res if isinstance(t_res, list) else [])
+                        if flights:
+                            lines = [f"📡 Canlı Kafka telemetri akışından **{len(flights)} adet uçuş** tespit edildi:\n"]
+                            for f in flights[:10]:
+                                f_num = f.get("flight_number") or f.get("callsign") or "Bilinmeyen Uçuş"
+                                ac_model = f.get("aircraft_model") or "Bilinmeyen Model"
+                                orig = f.get("origin_airport_iata") or "---"
+                                dest = f.get("destination_airport_iata") or "---"
+                                tele = f.get("telemetry", {})
+                                alt = tele.get("altitude_feet", 0)
+                                spd = tele.get("ground_speed_kmh", 0)
+                                lines.append(f"• **{f_num}** ({ac_model}) | Rota: `{orig} ➔ {dest}` | İrtifa: **{alt:,} ft** ({int(alt*0.3048):,} m) | Hız: **{spd} km/s**")
+                            cleaned_answer = "\n".join(lines)
+                        else:
+                            cleaned_answer = "📡 Canlı Kafka telemetri akışında belirtilen kriterlere uygun aktif uçuş kaydı bulunamadı."
+                    elif collected_reasoning_parts:
+                        cleaned_answer = "\n\n".join(collected_reasoning_parts)
+
                 _print_agent_final_response(cleaned_answer, time.perf_counter() - t_start)
 
                 all_reasoning = "\n\n".join(collected_reasoning_parts).strip() if collected_reasoning_parts else None
@@ -644,6 +673,28 @@ async def run_llm_cycle(
                 turn2_reasoning, cleaned_ans = extract_real_llm_reasoning(final_msg.content or "", final_msg)
                 if turn2_reasoning:
                     collected_reasoning_parts.append(turn2_reasoning)
+
+                # Fallback: Guarantee non-empty user answer
+                if not cleaned_ans or not cleaned_ans.strip():
+                    if tool_calls_executed:
+                        t_res = tool_calls_executed[-1].get("result", {})
+                        flights = t_res.get("flights", []) if isinstance(t_res, dict) else (t_res if isinstance(t_res, list) else [])
+                        if flights:
+                            lines = [f"📡 Canlı Kafka telemetri akışından **{len(flights)} adet uçuş** tespit edildi:\n"]
+                            for f in flights[:10]:
+                                f_num = f.get("flight_number") or f.get("callsign") or "Bilinmeyen Uçuş"
+                                ac_model = f.get("aircraft_model") or "Bilinmeyen Model"
+                                orig = f.get("origin_airport_iata") or "---"
+                                dest = f.get("destination_airport_iata") or "---"
+                                tele = f.get("telemetry", {})
+                                alt = tele.get("altitude_feet", 0)
+                                spd = tele.get("ground_speed_kmh", 0)
+                                lines.append(f"• **{f_num}** ({ac_model}) | Rota: `{orig} ➔ {dest}` | İrtifa: **{alt:,} ft** ({int(alt*0.3048):,} m) | Hız: **{spd} km/s**")
+                            cleaned_ans = "\n".join(lines)
+                        else:
+                            cleaned_ans = "📡 Canlı Kafka telemetri akışında belirtilen kriterlere uygun aktif uçuş kaydı bulunamadı."
+                    elif collected_reasoning_parts:
+                        cleaned_ans = "\n\n".join(collected_reasoning_parts)
 
                 _print_agent_final_response(cleaned_ans, time.perf_counter() - t_start)
 
