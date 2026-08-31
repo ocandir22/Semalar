@@ -5,6 +5,9 @@ dispatches tool executions dynamically without hardcoded routing or bloated syst
 """
 
 import sys
+import os
+import re
+import json
 from typing import Dict, Any, List
 
 # Core LLM Engine
