@@ -414,6 +414,21 @@ class TurkeyGeoEngine:
             "summary": p["readable_summary"]
         }
 
+    def get_province_polygon(self, province_name: str) -> Optional[Dict[str, Any]]:
+        """Returns the GeoJSON geometry (Polygon / MultiPolygon with coordinates) for a given province."""
+        canonical = self.resolve_province_name(province_name)
+        if not canonical or canonical not in self.provinces:
+            return None
+        p = self.provinces[canonical]
+        return {
+            "name": p["name"],
+            "plate": p["plate_code"],
+            "geometry_type": p["geometry_type"],
+            "coordinates": p["coordinates"],
+            "center": p["center"],
+            "bbox": p["bbox"]
+        }
+
     def list_provinces(self, region_filter: Optional[str] = None) -> List[Dict[str, Any]]:
         """Returns a clean list of all 81 provinces formatted with plate, name, and region."""
         results = []
@@ -456,12 +471,14 @@ class TurkeyGeoEngine:
         matched_prov = self.resolve_province_name(query_str)
         if matched_prov:
             prov_info = self.get_province_info(matched_prov)
+            prov_poly = self.get_province_polygon(matched_prov)
             return {
                 "type": "polygon",
                 "province": matched_prov,
                 "name": matched_prov,
                 "center": prov_info.get("center") if prov_info else None,
                 "bbox": prov_info.get("bounds") if prov_info else None,
+                "polygon": prov_poly,
                 "summary": prov_info.get("summary") if prov_info else ""
             }
         # Fall back to macro region
