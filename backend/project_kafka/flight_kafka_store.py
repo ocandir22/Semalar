@@ -243,6 +243,25 @@ class FlightKafkaStore:
         geo_filter = geo_engine.resolve_geo_filter(raw_geo) if raw_geo else None
         region_name = geo_filter.get("name", raw_geo) if geo_filter else None
 
+        # Coerce numeric filters safely (handles str/int/float inputs from LLMs)
+        if min_speed_kmh is not None:
+            try:
+                min_speed_kmh = float(min_speed_kmh)
+            except (ValueError, TypeError):
+                min_speed_kmh = None
+
+        if min_altitude_feet is not None:
+            try:
+                min_altitude_feet = float(min_altitude_feet)
+            except (ValueError, TypeError):
+                min_altitude_feet = None
+
+        if limit is not None:
+            try:
+                limit = int(limit)
+            except (ValueError, TypeError):
+                limit = 15
+
         matched = []
         for f in self.flights.values():
             telemetry = f.get("telemetry", {})

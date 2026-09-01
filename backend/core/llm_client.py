@@ -118,6 +118,11 @@ def extract_real_llm_reasoning(raw_content: str, message_obj=None) -> Tuple[Opti
         # Remove thinking tags from user-facing answer text
         clean_text = re.sub(r"<(?:think|thought)>[\s\S]*?</(?:think|thought)>", "", clean_text, flags=re.IGNORECASE).strip()
 
+    # Fallback: if user answer became empty because the model put its entire text in <think>,
+    # preserve the text so user always sees the answer!
+    if not clean_text and reasoning_blocks:
+        clean_text = "\n\n".join(reasoning_blocks).strip()
+
     combined_reasoning = "\n\n".join(reasoning_blocks).strip() if reasoning_blocks else None
     return combined_reasoning, clean_text
 
@@ -137,19 +142,21 @@ def extract_gemini_thought_and_text(response) -> Tuple[Optional[str], str]:
                         thoughts.append(text.strip())
                 elif text:
                     th, cl = extract_real_llm_reasoning(text)
-                    if th:
+                    if th and th not in thoughts:
                         thoughts.append(th)
                     if cl:
                         text_parts.append(cl)
     if not text_parts and hasattr(response, "text") and response.text:
         th, cl = extract_real_llm_reasoning(response.text)
-        if th:
+        if th and th not in thoughts:
             thoughts.append(th)
         if cl:
             text_parts.append(cl)
 
     full_thoughts = "\n\n".join(thoughts).strip() if thoughts else None
     full_text = "".join(text_parts).strip()
+    if not full_text and full_thoughts:
+        full_text = full_thoughts
     return full_thoughts, full_text
 
 
@@ -235,15 +242,25 @@ def _print_agent_final_response(answer: str, elapsed_total_s: float):
 
 
 def build_gemini_tools(tool_definitions: List[Dict[str, Any]]):
-    """Converts local tool definitions into Gemini types.Tool format."""
+    """Converts local tool definitions into Gemini types.Tool format with exact type mapping."""
     from google.genai import types
     function_declarations = []
     for tool_def in tool_definitions:
         raw_props = tool_def.get("parameters", {}).get("properties", {})
         clean_props = {}
         for prop_name, prop_info in raw_props.items():
+            raw_t = str(prop_info.get("type", "STRING")).upper()
+            if raw_t in ["NUMBER", "FLOAT", "DOUBLE"]:
+                p_type = "NUMBER"
+            elif raw_t in ["INTEGER", "INT"]:
+                p_type = "INTEGER"
+            elif raw_t in ["BOOLEAN", "BOOL"]:
+                p_type = "BOOLEAN"
+            else:
+                p_type = "STRING"
+
             clean_props[prop_name] = {
-                "type": prop_info.get("type", "STRING").upper(),
+                "type": p_type,
                 "description": prop_info.get("description", "")
             }
         
@@ -320,12 +337,58 @@ def build_thought_process(
             "status": t_res.get("status", "success") if isinstance(t_res, dict) else "success"
         })
 
+    # If the model didn't output native thinking tokens (e.g. flash-lite models),
+    # construct a clean dynamic thought summary based on actual query and tool decisions:
+    final_reasoning = reasoning_text.strip() if reasoning_text and reasoning_text.strip() else None
+    if not final_reasoning:
+        if tool_traces:
+            lines = [f"Kullanıcı sorgusu analiz edildi: \"{user_query}\""]
+            for tr in tool_traces:
+                args_str = json.dumps(tr['arguments'], ensure_ascii=False)
+                lines.append(f"• FastMCP '{tr['tool_name']}' aracı çağrıldı (Parametreler: {args_str}) ➔ {tr['matched_records']} canlı telemetri eşleşti.")
+            lines.append("• Alınan canlı radar verileri analiz edilerek havacılık formatında yanıt hazırlandı.")
+            final_reasoning = "\n".join(lines)
+        else:
+            final_reasoning = f"Kullanıcı sorgusu (\" {user_query} \") analiz edildi ve doğrudan yanıtlandı."
+
     return {
-        "raw_reasoning": reasoning_text.strip() if reasoning_text and reasoning_text.strip() else None,
+        "raw_reasoning": final_reasoning,
         "tool_traces": tool_traces,
         "duration_seconds": round(total_elapsed_seconds, 2),
         "tools_count": len(tool_calls_executed)
     }
+
+
+def extract_matched_flights(tool_calls_executed: list) -> List[Dict[str, Any]]:
+    """Extracts all unique matched flight records with telemetry and coordinates from executed tools."""
+    matched = []
+    seen_ids = set()
+    for tc in tool_calls_executed or []:
+        res = tc.get("result", {})
+        if not isinstance(res, dict):
+            continue
+        
+        flights_pool = []
+        if "flights" in res and isinstance(res["flights"], list):
+            flights_pool.extend(res["flights"])
+        if "emergency_flights" in res and isinstance(res["emergency_flights"], list):
+            flights_pool.extend(res["emergency_flights"])
+        if "flight" in res and isinstance(res["flight"], dict):
+            flights_pool.append(res["flight"])
+            
+        for f in flights_pool:
+            if not isinstance(f, dict):
+                continue
+            telemetry = f.get("telemetry", {})
+            lat = telemetry.get("latitude")
+            lon = telemetry.get("longitude")
+            if lat is None or lon is None:
+                continue
+            f_id = f.get("flight_id") or f.get("callsign") or f.get("flight_number") or f"{lat}_{lon}"
+            if f_id not in seen_ids:
+                seen_ids.add(f_id)
+                matched.append(f)
+    return matched
 
 
 async def call_gemini_with_retry(genai_client, model: str, contents: list, config, max_retries: int = 3):
@@ -461,6 +524,28 @@ async def run_llm_cycle(
                 if turn2_thought:
                     collected_reasoning_parts.append(turn2_thought)
 
+                # Fallback: Guarantee non-empty user answer
+                if not cleaned_answer or not cleaned_answer.strip():
+                    if tool_calls_executed:
+                        t_res = tool_calls_executed[-1].get("result", {})
+                        flights = t_res.get("flights", []) if isinstance(t_res, dict) else (t_res if isinstance(t_res, list) else [])
+                        if flights:
+                            lines = [f"📡 Canlı Kafka telemetri akışından **{len(flights)} adet uçuş** tespit edildi:\n"]
+                            for f in flights[:10]:
+                                f_num = f.get("flight_number") or f.get("callsign") or "Bilinmeyen Uçuş"
+                                ac_model = f.get("aircraft_model") or "Bilinmeyen Model"
+                                orig = f.get("origin_airport_iata") or "---"
+                                dest = f.get("destination_airport_iata") or "---"
+                                tele = f.get("telemetry", {})
+                                alt = tele.get("altitude_feet", 0)
+                                spd = tele.get("ground_speed_kmh", 0)
+                                lines.append(f"• **{f_num}** ({ac_model}) | Rota: `{orig} ➔ {dest}` | İrtifa: **{alt:,} ft** ({int(alt*0.3048):,} m) | Hız: **{spd} km/s**")
+                            cleaned_answer = "\n".join(lines)
+                        else:
+                            cleaned_answer = "📡 Canlı Kafka telemetri akışında belirtilen kriterlere uygun aktif uçuş kaydı bulunamadı."
+                    elif collected_reasoning_parts:
+                        cleaned_answer = "\n\n".join(collected_reasoning_parts)
+
                 _print_agent_final_response(cleaned_answer, time.perf_counter() - t_start)
 
                 all_reasoning = "\n\n".join(collected_reasoning_parts).strip() if collected_reasoning_parts else None
@@ -470,12 +555,14 @@ async def run_llm_cycle(
                     reasoning_text=all_reasoning,
                     total_elapsed_seconds=time.perf_counter() - t_start
                 )
+                matched_flights = extract_matched_flights(tool_calls_executed)
 
                 return {
                     "status": "success",
                     "answer": cleaned_answer,
                     "tool_calls": tool_calls_executed,
                     "thought_process": thought_process,
+                    "matched_flights": matched_flights,
                     "model": active_model,
                     "provider": provider
                 }
@@ -485,6 +572,7 @@ async def run_llm_cycle(
                     "status": "error",
                     "answer": f"Gemini Response Error: {e}",
                     "tool_calls": tool_calls_executed,
+                    "matched_flights": extract_matched_flights(tool_calls_executed),
                     "model": active_model,
                     "provider": provider,
                     "error": str(e)
@@ -509,6 +597,7 @@ async def run_llm_cycle(
                 "answer": cleaned_answer,
                 "tool_calls": [],
                 "thought_process": thought_process,
+                "matched_flights": [],
                 "model": active_model,
                 "provider": provider
             }
@@ -631,6 +720,28 @@ async def run_llm_cycle(
                 if turn2_reasoning:
                     collected_reasoning_parts.append(turn2_reasoning)
 
+                # Fallback: Guarantee non-empty user answer
+                if not cleaned_ans or not cleaned_ans.strip():
+                    if tool_calls_executed:
+                        t_res = tool_calls_executed[-1].get("result", {})
+                        flights = t_res.get("flights", []) if isinstance(t_res, dict) else (t_res if isinstance(t_res, list) else [])
+                        if flights:
+                            lines = [f"📡 Canlı Kafka telemetri akışından **{len(flights)} adet uçuş** tespit edildi:\n"]
+                            for f in flights[:10]:
+                                f_num = f.get("flight_number") or f.get("callsign") or "Bilinmeyen Uçuş"
+                                ac_model = f.get("aircraft_model") or "Bilinmeyen Model"
+                                orig = f.get("origin_airport_iata") or "---"
+                                dest = f.get("destination_airport_iata") or "---"
+                                tele = f.get("telemetry", {})
+                                alt = tele.get("altitude_feet", 0)
+                                spd = tele.get("ground_speed_kmh", 0)
+                                lines.append(f"• **{f_num}** ({ac_model}) | Rota: `{orig} ➔ {dest}` | İrtifa: **{alt:,} ft** ({int(alt*0.3048):,} m) | Hız: **{spd} km/s**")
+                            cleaned_ans = "\n".join(lines)
+                        else:
+                            cleaned_ans = "📡 Canlı Kafka telemetri akışında belirtilen kriterlere uygun aktif uçuş kaydı bulunamadı."
+                    elif collected_reasoning_parts:
+                        cleaned_ans = "\n\n".join(collected_reasoning_parts)
+
                 _print_agent_final_response(cleaned_ans, time.perf_counter() - t_start)
 
                 all_reasoning = "\n\n".join(collected_reasoning_parts).strip() if collected_reasoning_parts else None
@@ -640,12 +751,14 @@ async def run_llm_cycle(
                     reasoning_text=all_reasoning,
                     total_elapsed_seconds=time.perf_counter() - t_start
                 )
+                matched_flights = extract_matched_flights(tool_calls_executed)
 
                 return {
                     "status": "success",
                     "answer": cleaned_ans,
                     "tool_calls": tool_calls_executed,
                     "thought_process": thought_process,
+                    "matched_flights": matched_flights,
                     "model": model_name,
                     "provider": provider
                 }
@@ -655,6 +768,7 @@ async def run_llm_cycle(
                     "status": "error",
                     "answer": f"{provider.upper()} Response Error: {e}",
                     "tool_calls": tool_calls_executed,
+                    "matched_flights": extract_matched_flights(tool_calls_executed),
                     "model": model_name,
                     "provider": provider,
                     "error": str(e)
@@ -677,6 +791,7 @@ async def run_llm_cycle(
                 "answer": cleaned_ans,
                 "tool_calls": [],
                 "thought_process": thought_process,
+                "matched_flights": [],
                 "model": model_name,
                 "provider": provider
             }

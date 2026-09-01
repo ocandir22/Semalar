@@ -633,6 +633,159 @@ function ThoughtAccordion({ thought }) {
 }
 
 
+function RadarMiniMap({ flights, mapId }) {
+  const mapRef = useRef(null);
+  const leafletInstance = useRef(null);
+  const [isCollapsed, setIsCollapsed] = useState(false);
+
+  useEffect(() => {
+    if (!flights || flights.length === 0 || isCollapsed) return;
+
+    if (!leafletInstance.current && mapRef.current && window.L) {
+      try {
+        const map = window.L.map(mapRef.current, {
+          attributionControl: false,
+          zoomControl: true
+        });
+
+        window.L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+          maxZoom: 19,
+          subdomains: 'abcd'
+        }).addTo(map);
+
+        const latLngs = [];
+        flights.forEach(f => {
+          const tele = f.telemetry || {};
+          const lat = tele.latitude;
+          const lon = tele.longitude;
+          if (lat === null || lat === undefined || lon === null || lon === undefined) return;
+
+          const altFt = tele.altitude_feet || 0;
+          const spdKmh = tele.ground_speed_kmh || 0;
+          const heading = tele.heading_degrees || 0;
+          const vSpeed = tele.vertical_speed_fpm || 0;
+          const fCode = f.flight_number || f.callsign || "Bilinmiyor";
+          const model = f.aircraft_model || "Unknown";
+          const reg = f.registration || "N/A";
+          const routeStr = f.route?.display || `${f.origin_airport_iata || '?'} ➔ ${f.destination_airport_iata || '?'}`;
+          const squawk = tele.squawk || "---";
+
+          let planeColor = "#38bdf8";
+          if (altFt < 1000 || tele.on_ground) {
+            planeColor = "#94a3b8";
+          } else if (altFt < 15000) {
+            planeColor = "#fbbf24";
+          } else if (altFt < 30000) {
+            planeColor = "#34d399";
+          }
+
+          const iconHtml = `
+            <div class="radar-plane-icon-wrapper">
+              <svg class="radar-plane-svg" style="transform: rotate(${heading}deg);" viewBox="0 0 24 24" width="22" height="22" fill="${planeColor}">
+                <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
+              </svg>
+              <span class="radar-plane-tag">${fCode}</span>
+            </div>
+          `;
+
+          const customIcon = window.L.divIcon({
+            className: "radar-plane-marker",
+            html: iconHtml,
+            iconSize: [40, 40],
+            iconAnchor: [20, 20]
+          });
+
+          const popupContent = `
+            <div class="hud-popup-card">
+              <div class="hud-popup-header">
+                <span class="hud-popup-flight-code">✈️ ${fCode}</span>
+                <span class="hud-popup-speed-badge">⚡ ${spdKmh} km/s</span>
+              </div>
+              <div class="hud-popup-row">
+                <span>Model & Tescil:</span>
+                <span class="hud-popup-val">${model} (${reg})</span>
+              </div>
+              <div class="hud-popup-row">
+                <span>İrtifa:</span>
+                <span class="hud-popup-val">${altFt.toLocaleString()} ft (${Math.round(altFt * 0.3048).toLocaleString()} m)</span>
+              </div>
+              <div class="hud-popup-row">
+                <span>Dikey Hız:</span>
+                <span class="hud-popup-val">${vSpeed > 0 ? '+' : ''}${vSpeed} ft/dk ${vSpeed > 500 ? '↗️' : vSpeed < -500 ? '↘️' : '➡️'}</span>
+              </div>
+              <div class="hud-popup-row">
+                <span>Squawk:</span>
+                <span class="hud-popup-val">Sq: ${squawk}</span>
+              </div>
+              <div class="hud-popup-route">
+                <span>${routeStr}</span>
+              </div>
+            </div>
+          `;
+
+          const marker = window.L.marker([lat, lon], { icon: customIcon }).addTo(map);
+          marker.bindPopup(popupContent);
+          latLngs.push([lat, lon]);
+        });
+
+        if (latLngs.length > 1) {
+          map.fitBounds(latLngs, { padding: [40, 40], maxZoom: 12 });
+        } else if (latLngs.length === 1) {
+          map.setView(latLngs[0], 9);
+        } else {
+          map.setView([39.0, 35.0], 6);
+        }
+
+        leafletInstance.current = { map, latLngs };
+        setTimeout(() => map.invalidateSize(), 200);
+      } catch (e) {
+        console.error("RadarMiniMap error:", e);
+      }
+    }
+  }, [flights, isCollapsed]);
+
+  const handleFit = () => {
+    if (leafletInstance.current && leafletInstance.current.latLngs.length > 0) {
+      const { map, latLngs } = leafletInstance.current;
+      if (latLngs.length > 1) {
+        map.fitBounds(latLngs, { padding: [40, 40], maxZoom: 12 });
+      } else if (latLngs.length === 1) {
+        map.setView(latLngs[0], 9);
+      }
+    }
+  };
+
+  const handleToggle = () => {
+    setIsCollapsed(!isCollapsed);
+    if (isCollapsed && leafletInstance.current) {
+      setTimeout(() => leafletInstance.current.map.invalidateSize(), 200);
+    }
+  };
+
+  if (!flights || flights.length === 0) return null;
+
+  return (
+    <div className={`radar-map-wrapper ${isCollapsed ? "collapsed" : ""}`}>
+      <div className="radar-map-header">
+        <div className="radar-map-title-group">
+          <span>🗺️ Canlı Telemetri Radarı</span>
+          <span className="radar-map-count-badge">{flights.length} Uçuş Konumlandı</span>
+        </div>
+        <div className="radar-map-actions">
+          <button className="radar-map-btn" onClick={handleFit} title="Tüm uçakları haritada odakla">
+            🎯 Odakla
+          </button>
+          <button className="radar-map-btn" onClick={handleToggle}>
+            {isCollapsed ? "🗺️ Haritayı Göster" : "🗺️ Haritayı Gizle"}
+          </button>
+        </div>
+      </div>
+      <div ref={mapRef} className="radar-map-canvas" id={`react-radar-map-${mapId}`}></div>
+    </div>
+  );
+}
+
+
 function ChatArea({ messages, isLoading, onSelectPrompt, messagesEndRef }) {
   const [copiedIdx, setCopiedIdx] = useState(null);
 
@@ -687,6 +840,9 @@ function ChatArea({ messages, isLoading, onSelectPrompt, messagesEndRef }) {
             ) : (
               <div>
                 {formatAssistantMessage(msg.content)}
+                {msg.matchedFlights && msg.matchedFlights.length > 0 && (
+                  <RadarMiniMap flights={msg.matchedFlights} mapId={idx} />
+                )}
                 <div style={{ marginTop: "10px", display: "flex", justifyContent: "flex-end" }}>
                   <button
                     className="btn-icon"
@@ -968,6 +1124,8 @@ function App() {
           role: "assistant",
           content: res.answer,
           toolCalls: res.tool_calls || [],
+          thoughtProcess: res.thought_process,
+          matchedFlights: res.matched_flights || [],
           model: res.model || statusInfo?.model
         };
         setMessages((prev) => [...prev, assistantMsg]);
@@ -976,6 +1134,8 @@ function App() {
           role: "assistant",
           content: `⚠️ **Hata:** ${res.answer || res.error || "İstek işlenirken bir sorun oluştu."}`,
           toolCalls: res.tool_calls || [],
+          thoughtProcess: res.thought_process,
+          matchedFlights: res.matched_flights || [],
           model: res.model
         };
         setMessages((prev) => [...prev, errorMsg]);
