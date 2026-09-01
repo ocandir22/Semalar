@@ -306,6 +306,34 @@ def get_fleet_aircraft_analytics(
     )
 
 
+# ============================================================
+# 🛡️ 8. AI TCAS & AIRSPACE CONFLICT DETECTION MCP TOOL
+# ============================================================
+
+@mcp_server.tool()
+@audit_tool("detect_airspace_conflicts")
+def detect_airspace_conflicts(
+    min_horizontal_km: float = 10.0,
+    min_vertical_feet: float = 1000.0,
+    limit: int = 10
+) -> Dict[str, Any]:
+    """Scans active aircraft pairs across Turkish airspace to detect loss of separation, TCAS Traffic Advisories (TA/RA), and close-proximity airborne conflicts.
+
+    Args:
+        min_horizontal_km: Minimum horizontal proximity threshold in km (default: 10.0 km / ~5.4 NM).
+        min_vertical_feet: Minimum vertical separation threshold in feet (default: 1000.0 ft).
+        limit: Maximum number of conflict pairs to return.
+
+    Returns:
+        Dict[str, Any]: List of detected close-proximity aircraft pairs, separation distances, altitudes, routes, and TCAS alert levels.
+    """
+    return kafka_store.detect_airspace_conflicts(
+        min_horizontal_km=min_horizontal_km,
+        min_vertical_feet=min_vertical_feet,
+        limit=limit
+    )
+
+
 # Registry of all FastMCP Tools available on this Server
 MCP_TOOLS_REGISTRY = {
     "query_kafka_stream": query_kafka_stream,
@@ -315,7 +343,8 @@ MCP_TOOLS_REGISTRY = {
     "get_airport_traffic": get_airport_traffic,
     "get_vertical_rate_flights": get_vertical_rate_flights,
     "get_transit_flights": get_transit_flights,
-    "get_fleet_aircraft_analytics": get_fleet_aircraft_analytics
+    "get_fleet_aircraft_analytics": get_fleet_aircraft_analytics,
+    "detect_airspace_conflicts": detect_airspace_conflicts
 }
 
 
@@ -423,9 +452,29 @@ async def api_status(request):
             {
                 "name": "get_fleet_aircraft_analytics",
                 "description": "Active aircraft model breakdown, wide vs narrow-body shares, and airline fleet distribution"
+            },
+            {
+                "name": "detect_airspace_conflicts",
+                "description": "AI TCAS loss of separation and airborne close-proximity conflict detection"
             }
         ]
     })
+
+
+async def api_geo_provinces(request):
+    """Returns list of all 81 Turkish provinces."""
+    return JSONResponse({"provinces": geo_engine.list_provinces()})
+
+
+async def api_geo_province_polygon(request):
+    """Returns GeoJSON boundary polygon coordinates for a requested province."""
+    name = request.query_params.get("name", "").strip()
+    if not name:
+        return JSONResponse({"status": "error", "error": "Province name required."}, status_code=400)
+    poly = geo_engine.get_province_polygon(name)
+    if not poly:
+        return JSONResponse({"status": "not_found", "error": f"Province '{name}' not found."}, status_code=404)
+    return JSONResponse({"status": "success", "polygon": poly})
 
 
 async def api_kafka_stats(request):
@@ -556,6 +605,8 @@ async def serve_kafka(request):
 app.add_route("/api/tools/execute", api_tools_execute, methods=["POST"])
 app.add_route("/api/chat", api_chat, methods=["POST"])
 app.add_route("/api/status", api_status, methods=["GET"])
+app.add_route("/api/geo/provinces", api_geo_provinces, methods=["GET"])
+app.add_route("/api/geo/province-polygon", api_geo_province_polygon, methods=["GET"])
 app.add_route("/api/kafka/stats", api_kafka_stats, methods=["GET"])
 app.add_route("/api/kafka/flights", api_kafka_flights, methods=["GET"])
 app.add_route("/api/kafka/fastest", api_kafka_fastest, methods=["GET"])

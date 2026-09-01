@@ -218,6 +218,9 @@ def _print_tool_result(tool_name: str, parsed_json: dict, elapsed_ms: float):
             tot = parsed_json.get("total_aircraft_analyzed", 0)
             bd = parsed_json.get("body_type_distribution", {})
             summary_lines.append(f"Filo Analizi: {tot} uçak | Geniş Gövde: {bd.get('wide_body', 0)} | Dar Gövde: {bd.get('narrow_body_or_regional', 0)}")
+        elif tool_name == "detect_airspace_conflicts":
+            tot = parsed_json.get("total_conflicts_detected", 0)
+            summary_lines.append(f"AI TCAS Çarpışma Analizi: {tot} yakınlaşma/çatışma uyarısı tespit edildi")
         else:
             summary_lines.append(f"İşlem tamamlandı ({status})")
     else:
@@ -391,6 +394,35 @@ def extract_matched_flights(tool_calls_executed: list) -> List[Dict[str, Any]]:
     return matched
 
 
+def extract_geo_overlays(tool_calls_executed: list) -> List[Dict[str, Any]]:
+    """Extracts province polygon overlays and airport approach cones from executed FastMCP tools."""
+    overlays = []
+    seen = set()
+    for tc in tool_calls_executed or []:
+        res = tc.get("result", {})
+        if not isinstance(res, dict):
+            continue
+        if "geo_overlay" in res and isinstance(res["geo_overlay"], dict):
+            name = res["geo_overlay"].get("name")
+            if name and name not in seen:
+                seen.add(name)
+                overlays.append({
+                    "type": "province_polygon",
+                    "name": name,
+                    "data": res["geo_overlay"]
+                })
+        if "approach_cone" in res and isinstance(res["approach_cone"], dict):
+            ap = res["approach_cone"].get("airport")
+            if ap and ap not in seen:
+                seen.add(ap)
+                overlays.append({
+                    "type": "approach_cone",
+                    "airport": ap,
+                    "data": res["approach_cone"]
+                })
+    return overlays
+
+
 async def call_gemini_with_retry(genai_client, model: str, contents: list, config, max_retries: int = 3):
     """Calls Gemini with automatic retry and model fallback in case of temporary 503/429 spikes."""
     models_to_try = [model] + [m for m in FALLBACK_MODELS if m != model]
@@ -538,8 +570,9 @@ async def run_llm_cycle(
                                 dest = f.get("destination_airport_iata") or "---"
                                 tele = f.get("telemetry", {})
                                 alt = tele.get("altitude_feet", 0)
-                                spd = tele.get("ground_speed_kmh", 0)
-                                lines.append(f"• **{f_num}** ({ac_model}) | Rota: `{orig} ➔ {dest}` | İrtifa: **{alt:,} ft** ({int(alt*0.3048):,} m) | Hız: **{spd} km/s**")
+                                spd_kmh = round(tele.get("ground_speed_kmh", 0))
+                                spd_kts = round(tele.get("ground_speed_knots", round(spd_kmh / 1.852)))
+                                lines.append(f"• **{f_num}** ({ac_model}) | Rota: `{orig} ➔ {dest}` | İrtifa: **{alt:,} ft** ({int(alt*0.3048):,} m) | Hız: **{spd_kts} kts** ({spd_kmh} km/sa)")
                             cleaned_answer = "\n".join(lines)
                         else:
                             cleaned_answer = "📡 Canlı Kafka telemetri akışında belirtilen kriterlere uygun aktif uçuş kaydı bulunamadı."
@@ -563,6 +596,7 @@ async def run_llm_cycle(
                     "tool_calls": tool_calls_executed,
                     "thought_process": thought_process,
                     "matched_flights": matched_flights,
+                    "geo_overlays": extract_geo_overlays(tool_calls_executed),
                     "model": active_model,
                     "provider": provider
                 }
@@ -573,6 +607,7 @@ async def run_llm_cycle(
                     "answer": f"Gemini Response Error: {e}",
                     "tool_calls": tool_calls_executed,
                     "matched_flights": extract_matched_flights(tool_calls_executed),
+                    "geo_overlays": extract_geo_overlays(tool_calls_executed),
                     "model": active_model,
                     "provider": provider,
                     "error": str(e)
@@ -734,8 +769,9 @@ async def run_llm_cycle(
                                 dest = f.get("destination_airport_iata") or "---"
                                 tele = f.get("telemetry", {})
                                 alt = tele.get("altitude_feet", 0)
-                                spd = tele.get("ground_speed_kmh", 0)
-                                lines.append(f"• **{f_num}** ({ac_model}) | Rota: `{orig} ➔ {dest}` | İrtifa: **{alt:,} ft** ({int(alt*0.3048):,} m) | Hız: **{spd} km/s**")
+                                spd_kmh = round(tele.get("ground_speed_kmh", 0))
+                                spd_kts = round(tele.get("ground_speed_knots", round(spd_kmh / 1.852)))
+                                lines.append(f"• **{f_num}** ({ac_model}) | Rota: `{orig} ➔ {dest}` | İrtifa: **{alt:,} ft** ({int(alt*0.3048):,} m) | Hız: **{spd_kts} kts** ({spd_kmh} km/sa)")
                             cleaned_ans = "\n".join(lines)
                         else:
                             cleaned_ans = "📡 Canlı Kafka telemetri akışında belirtilen kriterlere uygun aktif uçuş kaydı bulunamadı."
@@ -759,6 +795,7 @@ async def run_llm_cycle(
                     "tool_calls": tool_calls_executed,
                     "thought_process": thought_process,
                     "matched_flights": matched_flights,
+                    "geo_overlays": extract_geo_overlays(tool_calls_executed),
                     "model": model_name,
                     "provider": provider
                 }
@@ -769,6 +806,7 @@ async def run_llm_cycle(
                     "answer": f"{provider.upper()} Response Error: {e}",
                     "tool_calls": tool_calls_executed,
                     "matched_flights": extract_matched_flights(tool_calls_executed),
+                    "geo_overlays": extract_geo_overlays(tool_calls_executed),
                     "model": model_name,
                     "provider": provider,
                     "error": str(e)

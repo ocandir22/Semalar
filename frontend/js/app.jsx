@@ -633,10 +633,11 @@ function ThoughtAccordion({ thought }) {
 }
 
 
-function RadarMiniMap({ flights, mapId }) {
+function RadarMiniMap({ flights, geoOverlays = [], mapId }) {
   const mapRef = useRef(null);
   const leafletInstance = useRef(null);
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [isHeatActive, setIsHeatActive] = useState(false);
 
   useEffect(() => {
     if (!flights || flights.length === 0 || isCollapsed) return;
@@ -648,101 +649,272 @@ function RadarMiniMap({ flights, mapId }) {
           zoomControl: true
         });
 
-        window.L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        // OpenStreetMap Tile Layer with Radar Cyber Dark CSS
+        window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
           maxZoom: 19,
-          subdomains: 'abcd'
+          subdomains: ['a', 'b', 'c'],
+          attribution: '&copy; OpenStreetMap contributors'
         }).addTo(map);
 
         const latLngs = [];
-        flights.forEach(f => {
-          const tele = f.telemetry || {};
-          const lat = tele.latitude;
-          const lon = tele.longitude;
-          if (lat === null || lat === undefined || lon === null || lon === undefined) return;
+        const heatPoints = [];
+        let detectedPolyBounds = null;
+        const activeRouteLayerGroup = window.L.layerGroup().addTo(map);
 
-          const altFt = tele.altitude_feet || 0;
-          const spdKmh = tele.ground_speed_kmh || 0;
-          const heading = tele.heading_degrees || 0;
-          const vSpeed = tele.vertical_speed_fpm || 0;
-          const fCode = f.flight_number || f.callsign || "Bilinmiyor";
-          const model = f.aircraft_model || "Unknown";
-          const reg = f.registration || "N/A";
-          const routeStr = f.route?.display || `${f.origin_airport_iata || '?'} ➔ ${f.destination_airport_iata || '?'}`;
-          const squawk = tele.squawk || "---";
+        // Helper for indestructible province polygon rendering
+        const drawProvincePolygonReact = (polyData) => {
+          if (!polyData || !polyData.coordinates || !Array.isArray(polyData.coordinates)) return null;
+          try {
+            const geomType = (polyData.geometry_type || "").toLowerCase();
+            let latLngGroups = [];
 
-          let planeColor = "#38bdf8";
-          if (altFt < 1000 || tele.on_ground) {
-            planeColor = "#94a3b8";
-          } else if (altFt < 15000) {
-            planeColor = "#fbbf24";
-          } else if (altFt < 30000) {
-            planeColor = "#34d399";
+            if (geomType === "multipolygon" || (Array.isArray(polyData.coordinates[0]) && Array.isArray(polyData.coordinates[0][0]) && Array.isArray(polyData.coordinates[0][0][0]))) {
+              polyData.coordinates.forEach(subPoly => {
+                if (Array.isArray(subPoly) && subPoly.length > 0 && Array.isArray(subPoly[0])) {
+                  const ring = subPoly[0]
+                    .map(pt => [parseFloat(pt[1]), parseFloat(pt[0])])
+                    .filter(pt => !isNaN(pt[0]) && !isNaN(pt[1]));
+                  if (ring.length > 2) latLngGroups.push(ring);
+                }
+              });
+            } else if (Array.isArray(polyData.coordinates[0])) {
+              const ring = polyData.coordinates[0]
+                .map(pt => [parseFloat(pt[1]), parseFloat(pt[0])])
+                .filter(pt => !isNaN(pt[0]) && !isNaN(pt[1]));
+              if (ring.length > 2) latLngGroups.push(ring);
+            }
+
+            if (latLngGroups.length === 0) return null;
+
+            const polyLayer = window.L.polygon(latLngGroups, {
+              color: "#00f0ff",
+              weight: 2.8,
+              opacity: 0.95,
+              fillColor: "#0284c7",
+              fillOpacity: 0.18,
+              dashArray: "5, 6"
+            }).addTo(map);
+
+            polyLayer.bindTooltip(`📍 <strong>${polyData.name}</strong> İl Sınırı`, { permanent: false, direction: 'center' });
+            return polyLayer;
+          } catch (e) {
+            console.warn("drawProvincePolygonReact error:", e);
+            return null;
           }
+        };
 
-          const iconHtml = `
-            <div class="radar-plane-icon-wrapper">
-              <svg class="radar-plane-svg" style="transform: rotate(${heading}deg);" viewBox="0 0 24 24" width="22" height="22" fill="${planeColor}">
-                <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
-              </svg>
-              <span class="radar-plane-tag">${fCode}</span>
-            </div>
-          `;
-
-          const customIcon = window.L.divIcon({
-            className: "radar-plane-marker",
-            html: iconHtml,
-            iconSize: [40, 40],
-            iconAnchor: [20, 20]
+        // 1. Draw Geo Overlays (81 Province Polygon & Airport Approach Cones)
+        if (geoOverlays && Array.isArray(geoOverlays) && geoOverlays.length > 0) {
+          geoOverlays.forEach(ov => {
+            try {
+              if (ov.type === 'province_polygon' && ov.data) {
+                const polyLayer = drawProvincePolygonReact(ov.data);
+                if (polyLayer) {
+                  try {
+                    const b = polyLayer.getBounds();
+                    if (b && b.isValid()) detectedPolyBounds = b;
+                  } catch (bErr) {}
+                }
+              } else if (ov.type === 'approach_cone' && ov.data) {
+                const cone = ov.data;
+                const circle = window.L.circle([parseFloat(cone.center.lat), parseFloat(cone.center.lon)], {
+                  radius: (cone.radius_km || 25.0) * 1000,
+                  color: "#f59e0b",
+                  weight: 2.0,
+                  dashArray: "6, 6",
+                  fillColor: "#fbbf24",
+                  fillOpacity: 0.10
+                }).addTo(map);
+                circle.bindTooltip(`🛬 <strong>${cone.airport}</strong> (${cone.name}) Yaklaşma Sahası (25 km)`, { permanent: false });
+              }
+            } catch (ovErr) {
+              console.warn("GeoOverlay render error:", ovErr);
+            }
           });
+        }
 
-          const popupContent = `
-            <div class="hud-popup-card">
-              <div class="hud-popup-header">
-                <span class="hud-popup-flight-code">✈️ ${fCode}</span>
-                <span class="hud-popup-speed-badge">⚡ ${spdKmh} km/s</span>
-              </div>
-              <div class="hud-popup-row">
-                <span>Model & Tescil:</span>
-                <span class="hud-popup-val">${model} (${reg})</span>
-              </div>
-              <div class="hud-popup-row">
-                <span>İrtifa:</span>
-                <span class="hud-popup-val">${altFt.toLocaleString()} ft (${Math.round(altFt * 0.3048).toLocaleString()} m)</span>
-              </div>
-              <div class="hud-popup-row">
-                <span>Dikey Hız:</span>
-                <span class="hud-popup-val">${vSpeed > 0 ? '+' : ''}${vSpeed} ft/dk ${vSpeed > 500 ? '↗️' : vSpeed < -500 ? '↘️' : '➡️'}</span>
-              </div>
-              <div class="hud-popup-row">
-                <span>Squawk:</span>
-                <span class="hud-popup-val">Sq: ${squawk}</span>
-              </div>
-              <div class="hud-popup-route">
-                <span>${routeStr}</span>
-              </div>
-            </div>
-          `;
+        // 2. Iterate Flights
+        flights.forEach(f => {
+          try {
+            const tele = f.telemetry || {};
+            let lat = tele.latitude !== undefined && tele.latitude !== null ? tele.latitude : f.latitude;
+            let lon = tele.longitude !== undefined && tele.longitude !== null ? tele.longitude : f.longitude;
+            if (lat === null || lat === undefined || lon === null || lon === undefined) return;
+            lat = parseFloat(lat);
+            lon = parseFloat(lon);
+            if (isNaN(lat) || isNaN(lon)) return;
 
-          const marker = window.L.marker([lat, lon], { icon: customIcon }).addTo(map);
-          marker.bindPopup(popupContent);
-          latLngs.push([lat, lon]);
+            const altFt = parseFloat(tele.altitude_feet || f.altitude_feet || 0);
+            const spdKmh = Math.round(parseFloat(tele.ground_speed_kmh || f.ground_speed_kmh || 0));
+            const spdKts = Math.round(parseFloat(tele.ground_speed_knots || f.ground_speed_knots || (spdKmh / 1.852) || 0));
+            const heading = parseFloat(tele.heading_degrees || f.heading_degrees || 0);
+            const vSpeed = parseFloat(tele.vertical_speed_fpm || f.vertical_speed_fpm || 0);
+            const fCode = f.flight_number || f.callsign || "Bilinmiyor";
+            const model = f.aircraft_model || "Unknown";
+            const reg = f.registration || "N/A";
+            const routeStr = f.route?.display || `${f.origin_airport_iata || '?'} ➔ ${f.destination_airport_iata || '?'}`;
+            const squawk = tele.squawk || f.squawk || "---";
+
+            heatPoints.push([lat, lon, 0.85]);
+
+            let planeColor = "#38bdf8";
+            if (altFt < 1000 || tele.on_ground) {
+              planeColor = "#94a3b8";
+            } else if (altFt < 15000) {
+              planeColor = "#fbbf24";
+            } else if (altFt < 30000) {
+              planeColor = "#34d399";
+            }
+
+            const iconHtml = `
+              <div class="radar-plane-icon-wrapper">
+                <svg class="radar-plane-svg" style="transform: rotate(${heading}deg);" viewBox="0 0 24 24" width="24" height="24" fill="${planeColor}">
+                  <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
+                </svg>
+                <span class="radar-plane-tag">${fCode}</span>
+              </div>
+            `;
+
+            const customIcon = window.L.divIcon({
+              className: "radar-plane-marker",
+              html: iconHtml,
+              iconSize: [60, 42],
+              iconAnchor: [30, 21]
+            });
+
+            let tcasAlertHtml = "";
+            if (f.tcas_alert) {
+              tcasAlertHtml = `
+                <div class="hud-popup-tcas-alert">
+                  ⚠️ ${f.tcas_alert.severity || 'TCAS UYARISI'}: ${f.tcas_alert.separation_km} km / ${f.tcas_alert.vert_diff_ft} ft ayrım!
+                </div>
+              `;
+            }
+
+            const popupContent = `
+              <div class="hud-popup-card">
+                <div class="hud-popup-header">
+                  <span class="hud-popup-flight-code">✈️ ${fCode}</span>
+                  <span class="hud-popup-speed-badge">⚡ ${spdKts} kts (${spdKmh} km/sa)</span>
+                </div>
+                ${tcasAlertHtml}
+                <div class="hud-popup-row">
+                  <span>Model & Tescil:</span>
+                  <span class="hud-popup-val">${model} (${reg})</span>
+                </div>
+                <div class="hud-popup-row">
+                  <span>İrtifa:</span>
+                  <span class="hud-popup-val">${altFt.toLocaleString()} ft (${Math.round(altFt * 0.3048).toLocaleString()} m)</span>
+                </div>
+                <div class="hud-popup-row">
+                  <span>Dikey Hız:</span>
+                  <span class="hud-popup-val">${vSpeed > 0 ? '+' : ''}${vSpeed} ft/dk ${vSpeed > 500 ? '↗️' : vSpeed < -500 ? '↘️' : '➡️'}</span>
+                </div>
+                <div class="hud-popup-row">
+                  <span>Squawk:</span>
+                  <span class="hud-popup-val">Sq: ${squawk}</span>
+                </div>
+                <div class="hud-popup-route">
+                  <span>${routeStr}</span>
+                </div>
+              </div>
+            `;
+
+            const marker = window.L.marker([lat, lon], { icon: customIcon }).addTo(map);
+            marker.bindPopup(popupContent);
+
+            // Dynamic Flight Path Line On-Click (Origin ➔ Current ➔ Destination)
+            marker.on('popupopen', () => {
+              activeRouteLayerGroup.clearLayers();
+              if (f.route_endpoints) {
+                try {
+                  const ep = f.route_endpoints;
+                  const pathCoords = [];
+                  if (ep.origin && ep.origin.lat && ep.origin.lon) {
+                    const origLat = parseFloat(ep.origin.lat);
+                    const origLon = parseFloat(ep.origin.lon);
+                    pathCoords.push([origLat, origLon]);
+                    
+                    const origIcon = window.L.divIcon({
+                      className: 'radar-airport-marker',
+                      html: `<div style="background:#0284c7;color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;border:1px solid #38bdf8;box-shadow:0 0 10px rgba(56,189,248,0.8);white-space:nowrap;cursor:default;">🛫 ${ep.origin.iata || 'KALKIŞ'}</div>`,
+                      iconSize: [50, 22],
+                      iconAnchor: [25, 11]
+                    });
+                    window.L.marker([origLat, origLon], { icon: origIcon }).addTo(activeRouteLayerGroup);
+                  }
+
+                  pathCoords.push([lat, lon]);
+
+                  if (ep.destination && ep.destination.lat && ep.destination.lon) {
+                    const destLat = parseFloat(ep.destination.lat);
+                    const destLon = parseFloat(ep.destination.lon);
+                    pathCoords.push([destLat, destLon]);
+
+                    const destIcon = window.L.divIcon({
+                      className: 'radar-airport-marker',
+                      html: `<div style="background:#059669;color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;border:1px solid #34d399;box-shadow:0 0 10px rgba(52,211,153,0.8);white-space:nowrap;cursor:default;">🛬 ${ep.destination.iata || 'VARIŞ'}</div>`,
+                      iconSize: [50, 22],
+                      iconAnchor: [25, 11]
+                    });
+                    window.L.marker([destLat, destLon], { icon: destIcon }).addTo(activeRouteLayerGroup);
+                  }
+
+                  if (pathCoords.length >= 2) {
+                    const routeLine = window.L.polyline(pathCoords, {
+                      color: "#00f0ff",
+                      weight: 2.6,
+                      opacity: 0.85,
+                      dashArray: "6, 8"
+                    }).addTo(activeRouteLayerGroup);
+                    routeLine.bindTooltip(`✈️ ${fCode} Rotası: ${routeStr}`, { sticky: true });
+                  }
+                } catch (pErr) {}
+              }
+            });
+
+            marker.on('popupclose', () => {
+              activeRouteLayerGroup.clearLayers();
+            });
+
+            latLngs.push([lat, lon]);
+          } catch (fErr) {
+            console.warn("Flight render error:", fErr);
+          }
         });
 
-        if (latLngs.length > 1) {
-          map.fitBounds(latLngs, { padding: [40, 40], maxZoom: 12 });
+        let heatLayer = null;
+        if (typeof window.L.heatLayer === 'function' && heatPoints.length > 0) {
+          try {
+            heatLayer = window.L.heatLayer(heatPoints, { radius: 28, blur: 16, maxZoom: 10 });
+          } catch (hErr) {}
+        }
+
+        if (detectedPolyBounds && detectedPolyBounds.isValid()) {
+          map.fitBounds(detectedPolyBounds, { padding: [30, 30], maxZoom: 12 });
+        } else if (latLngs.length > 1) {
+          try { map.fitBounds(latLngs, { padding: [40, 40], maxZoom: 12 }); } catch(e){}
         } else if (latLngs.length === 1) {
           map.setView(latLngs[0], 9);
         } else {
           map.setView([39.0, 35.0], 6);
         }
 
-        leafletInstance.current = { map, latLngs };
-        setTimeout(() => map.invalidateSize(), 200);
+        leafletInstance.current = { map, latLngs, polyBounds: detectedPolyBounds, heatLayer };
+        setTimeout(() => map.invalidateSize(), 100);
+        setTimeout(() => {
+          map.invalidateSize();
+          if (detectedPolyBounds && detectedPolyBounds.isValid()) {
+            map.fitBounds(detectedPolyBounds, { padding: [30, 30], maxZoom: 12 });
+          } else if (latLngs.length > 1) {
+            try { map.fitBounds(latLngs, { padding: [40, 40], maxZoom: 12 }); } catch(e){}
+          }
+        }, 300);
       } catch (e) {
         console.error("RadarMiniMap error:", e);
       }
     }
-  }, [flights, isCollapsed]);
+  }, [flights, geoOverlays, isCollapsed]);
 
   const handleFit = () => {
     if (leafletInstance.current && leafletInstance.current.latLngs.length > 0) {
@@ -753,6 +925,49 @@ function RadarMiniMap({ flights, mapId }) {
         map.setView(latLngs[0], 9);
       }
     }
+  };
+
+  const handleToggleHeat = () => {
+    if (!leafletInstance.current || !leafletInstance.current.heatLayer) return;
+    const { map, heatLayer } = leafletInstance.current;
+    if (isHeatActive) {
+      map.removeLayer(heatLayer);
+      setIsHeatActive(false);
+    } else {
+      heatLayer.addTo(map);
+      setIsHeatActive(true);
+    }
+  };
+
+  const handleExportCSV = () => {
+    if (!flights || flights.length === 0) return;
+    const headers = ["Flight_Number", "Callsign", "Model", "Registration", "Airline", "Speed_kmh", "Altitude_ft", "VSpeed_fpm", "Heading", "Latitude", "Longitude", "Route", "Squawk", "Timestamp"];
+    const rows = flights.map(f => {
+      const tele = f.telemetry || {};
+      return [
+        `"${f.flight_number || ''}"`,
+        `"${f.callsign || ''}"`,
+        `"${f.aircraft_model || ''}"`,
+        `"${f.registration || ''}"`,
+        `"${f.airline_iata || f.airline_icao || ''}"`,
+        tele.ground_speed_kmh || 0,
+        tele.altitude_feet || 0,
+        tele.vertical_speed_fpm || 0,
+        tele.heading_degrees || 0,
+        tele.latitude || 0,
+        tele.longitude || 0,
+        `"${f.route?.display || ''}"`,
+        `"${tele.squawk || ''}"`,
+        `"${new Date().toISOString()}"`
+      ].join(",");
+    });
+
+    const csvContent = "\uFEFF" + [headers.join(","), ...rows].join("\r\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `semalar_telemetri_${Date.now()}.csv`;
+    link.click();
   };
 
   const handleToggle = () => {
@@ -774,6 +989,12 @@ function RadarMiniMap({ flights, mapId }) {
         <div className="radar-map-actions">
           <button className="radar-map-btn" onClick={handleFit} title="Tüm uçakları haritada odakla">
             🎯 Odakla
+          </button>
+          <button className={`radar-map-btn ${isHeatActive ? "active" : ""}`} onClick={handleToggleHeat} title="Termal Isı Haritası">
+            🔥 Isı Haritası
+          </button>
+          <button className="radar-map-btn" onClick={handleExportCSV} title="CSV Olarak İndir">
+            📥 CSV İndir
           </button>
           <button className="radar-map-btn" onClick={handleToggle}>
             {isCollapsed ? "🗺️ Haritayı Göster" : "🗺️ Haritayı Gizle"}
@@ -841,7 +1062,7 @@ function ChatArea({ messages, isLoading, onSelectPrompt, messagesEndRef }) {
               <div>
                 {formatAssistantMessage(msg.content)}
                 {msg.matchedFlights && msg.matchedFlights.length > 0 && (
-                  <RadarMiniMap flights={msg.matchedFlights} mapId={idx} />
+                  <RadarMiniMap flights={msg.matchedFlights} geoOverlays={msg.geoOverlays || []} mapId={idx} />
                 )}
                 <div style={{ marginTop: "10px", display: "flex", justifyContent: "flex-end" }}>
                   <button
@@ -1126,6 +1347,7 @@ function App() {
           toolCalls: res.tool_calls || [],
           thoughtProcess: res.thought_process,
           matchedFlights: res.matched_flights || [],
+          geoOverlays: res.geo_overlays || [],
           model: res.model || statusInfo?.model
         };
         setMessages((prev) => [...prev, assistantMsg]);
@@ -1136,6 +1358,7 @@ function App() {
           toolCalls: res.tool_calls || [],
           thoughtProcess: res.thought_process,
           matchedFlights: res.matched_flights || [],
+          geoOverlays: res.geo_overlays || [],
           model: res.model
         };
         setMessages((prev) => [...prev, errorMsg]);
