@@ -359,6 +359,38 @@ def build_thought_process(
     }
 
 
+def extract_matched_flights(tool_calls_executed: list) -> List[Dict[str, Any]]:
+    """Extracts all unique matched flight records with telemetry and coordinates from executed tools."""
+    matched = []
+    seen_ids = set()
+    for tc in tool_calls_executed or []:
+        res = tc.get("result", {})
+        if not isinstance(res, dict):
+            continue
+        
+        flights_pool = []
+        if "flights" in res and isinstance(res["flights"], list):
+            flights_pool.extend(res["flights"])
+        if "emergency_flights" in res and isinstance(res["emergency_flights"], list):
+            flights_pool.extend(res["emergency_flights"])
+        if "flight" in res and isinstance(res["flight"], dict):
+            flights_pool.append(res["flight"])
+            
+        for f in flights_pool:
+            if not isinstance(f, dict):
+                continue
+            telemetry = f.get("telemetry", {})
+            lat = telemetry.get("latitude")
+            lon = telemetry.get("longitude")
+            if lat is None or lon is None:
+                continue
+            f_id = f.get("flight_id") or f.get("callsign") or f.get("flight_number") or f"{lat}_{lon}"
+            if f_id not in seen_ids:
+                seen_ids.add(f_id)
+                matched.append(f)
+    return matched
+
+
 async def call_gemini_with_retry(genai_client, model: str, contents: list, config, max_retries: int = 3):
     """Calls Gemini with automatic retry and model fallback in case of temporary 503/429 spikes."""
     models_to_try = [model] + [m for m in FALLBACK_MODELS if m != model]
@@ -523,12 +555,14 @@ async def run_llm_cycle(
                     reasoning_text=all_reasoning,
                     total_elapsed_seconds=time.perf_counter() - t_start
                 )
+                matched_flights = extract_matched_flights(tool_calls_executed)
 
                 return {
                     "status": "success",
                     "answer": cleaned_answer,
                     "tool_calls": tool_calls_executed,
                     "thought_process": thought_process,
+                    "matched_flights": matched_flights,
                     "model": active_model,
                     "provider": provider
                 }
@@ -538,6 +572,7 @@ async def run_llm_cycle(
                     "status": "error",
                     "answer": f"Gemini Response Error: {e}",
                     "tool_calls": tool_calls_executed,
+                    "matched_flights": extract_matched_flights(tool_calls_executed),
                     "model": active_model,
                     "provider": provider,
                     "error": str(e)
@@ -562,6 +597,7 @@ async def run_llm_cycle(
                 "answer": cleaned_answer,
                 "tool_calls": [],
                 "thought_process": thought_process,
+                "matched_flights": [],
                 "model": active_model,
                 "provider": provider
             }
@@ -715,12 +751,14 @@ async def run_llm_cycle(
                     reasoning_text=all_reasoning,
                     total_elapsed_seconds=time.perf_counter() - t_start
                 )
+                matched_flights = extract_matched_flights(tool_calls_executed)
 
                 return {
                     "status": "success",
                     "answer": cleaned_ans,
                     "tool_calls": tool_calls_executed,
                     "thought_process": thought_process,
+                    "matched_flights": matched_flights,
                     "model": model_name,
                     "provider": provider
                 }
@@ -730,6 +768,7 @@ async def run_llm_cycle(
                     "status": "error",
                     "answer": f"{provider.upper()} Response Error: {e}",
                     "tool_calls": tool_calls_executed,
+                    "matched_flights": extract_matched_flights(tool_calls_executed),
                     "model": model_name,
                     "provider": provider,
                     "error": str(e)
@@ -752,6 +791,7 @@ async def run_llm_cycle(
                 "answer": cleaned_ans,
                 "tool_calls": [],
                 "thought_process": thought_process,
+                "matched_flights": [],
                 "model": model_name,
                 "provider": provider
             }

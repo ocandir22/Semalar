@@ -13,6 +13,11 @@
     
     <!-- Cockpit Radar Design System -->
     <link rel="stylesheet" href="/static/css/style.css">
+    
+    <!-- Leaflet.js CSS & JS for Interactive Radar Map -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    
     <style>
       .btn-kafka-ui {
         background: rgba(245, 158, 11, 0.15);
@@ -52,6 +57,194 @@
         border-radius: var(--radius-lg);
         box-shadow: var(--shadow-hud);
         overflow: hidden;
+      }
+
+      /* ============================================================
+         INTERACTIVE RADAR GEO-MAP STYLES
+         ============================================================ */
+      .radar-map-wrapper {
+        margin-top: 14px;
+        background: #0b111e;
+        border: 1px solid rgba(56, 189, 248, 0.35);
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5), 0 0 15px rgba(56, 189, 248, 0.12);
+        transition: all 0.2s ease;
+      }
+      .radar-map-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 14px;
+        background: rgba(15, 23, 42, 0.85);
+        border-bottom: 1px solid rgba(56, 189, 248, 0.18);
+      }
+      .radar-map-title-group {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12px;
+        font-weight: 700;
+        color: #38bdf8;
+      }
+      .radar-map-count-badge {
+        background: rgba(56, 189, 248, 0.18);
+        border: 1px solid rgba(56, 189, 248, 0.45);
+        color: #e0f2fe;
+        font-size: 10.5px;
+        padding: 2px 8px;
+        border-radius: 20px;
+        font-family: var(--font-mono);
+      }
+      .radar-map-actions {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .radar-map-btn {
+        background: rgba(30, 41, 59, 0.85);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        color: #cbd5e1;
+        font-size: 11px;
+        font-weight: 600;
+        padding: 3px 9px;
+        border-radius: 5px;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+      }
+      .radar-map-btn:hover {
+        background: rgba(56, 189, 248, 0.25);
+        border-color: rgba(56, 189, 248, 0.5);
+        color: #38bdf8;
+      }
+      .radar-map-canvas {
+        width: 100%;
+        height: 380px;
+        background: #080c14;
+      }
+      .radar-map-wrapper.collapsed .radar-map-canvas {
+        display: none;
+      }
+      
+      /* Leaflet Custom Plane Marker Icon */
+      .radar-plane-marker {
+        background: transparent;
+        border: none;
+      }
+      .radar-plane-icon-wrapper {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.8));
+        cursor: pointer;
+        transition: transform 0.15s ease;
+      }
+      .radar-plane-icon-wrapper:hover {
+        transform: scale(1.3);
+      }
+      .radar-plane-svg {
+        display: block;
+        transform-origin: center center;
+        transition: transform 0.2s ease;
+      }
+      .radar-plane-tag {
+        font-family: var(--font-mono);
+        font-size: 9.5px;
+        font-weight: 700;
+        color: #e0f2fe;
+        background: rgba(15, 23, 42, 0.9);
+        border: 1px solid rgba(56, 189, 248, 0.4);
+        padding: 1px 5px;
+        border-radius: 3px;
+        margin-top: 2px;
+        white-space: nowrap;
+        pointer-events: none;
+      }
+
+      /* Leaflet Custom HUD Popup */
+      .leaflet-popup-content-wrapper {
+        background: rgba(11, 17, 30, 0.96) !important;
+        border: 1px solid rgba(56, 189, 248, 0.45) !important;
+        border-radius: 10px !important;
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.7), 0 0 18px rgba(56, 189, 248, 0.2) !important;
+        color: #f1f5f9 !important;
+        padding: 0 !important;
+        backdrop-filter: blur(10px);
+      }
+      .leaflet-popup-tip {
+        background: rgba(11, 17, 30, 0.96) !important;
+        border: 1px solid rgba(56, 189, 248, 0.45) !important;
+      }
+      .hud-popup-card {
+        padding: 12px 14px;
+        min-width: 230px;
+      }
+      .hud-popup-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        padding-bottom: 6px;
+        margin-bottom: 8px;
+      }
+      .hud-popup-flight-code {
+        font-family: var(--font-mono);
+        font-weight: 800;
+        font-size: 14px;
+        color: #38bdf8;
+      }
+      .hud-popup-speed-badge {
+        font-size: 10.5px;
+        font-weight: 700;
+        padding: 2px 6px;
+        border-radius: 4px;
+        background: rgba(16, 185, 129, 0.15);
+        border: 1px solid rgba(16, 185, 129, 0.4);
+        color: #34d399;
+      }
+      .hud-popup-row {
+        display: flex;
+        justify-content: space-between;
+        font-size: 11px;
+        margin-bottom: 4px;
+        color: #94a3b8;
+      }
+      .hud-popup-val {
+        color: #f1f5f9;
+        font-weight: 600;
+      }
+      .hud-popup-route {
+        margin-top: 6px;
+        padding: 5px 8px;
+        background: rgba(15, 23, 42, 0.85);
+        border: 1px solid rgba(56, 189, 248, 0.25);
+        border-radius: 4px;
+        font-size: 11.5px;
+        text-align: center;
+        color: #38bdf8;
+        font-weight: 700;
+      }
+      .hud-popup-btn {
+        margin-top: 8px;
+        width: 100%;
+        background: rgba(56, 189, 248, 0.15);
+        border: 1px solid rgba(56, 189, 248, 0.4);
+        color: #38bdf8;
+        padding: 5px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 700;
+        cursor: pointer;
+        text-align: center;
+        transition: all 0.15s ease;
+      }
+      .hud-popup-btn:hover {
+        background: rgba(56, 189, 248, 0.35);
+        color: #fff;
       }
       
       /* ============================================================
@@ -458,7 +651,164 @@
             `;
         }
 
-        function appendMessage(role, content, toolCalls = [], model = "", thoughtProcess = null) {
+        let activeLeafletMaps = {};
+        let mapMessageCounter = 0;
+
+        function toggleRadarMap(mapId) {
+            const wrapper = document.getElementById(`map-wrapper-${mapId}`);
+            const btnText = document.getElementById(`map-toggle-text-${mapId}`);
+            if (!wrapper) return;
+            wrapper.classList.toggle("collapsed");
+            const isCollapsed = wrapper.classList.contains("collapsed");
+            if (btnText) {
+                btnText.textContent = isCollapsed ? "🗺️ Haritayı Göster" : "🗺️ Haritayı Gizle";
+            }
+            if (!isCollapsed && activeLeafletMaps[mapId]) {
+                setTimeout(() => {
+                    activeLeafletMaps[mapId].map.invalidateSize();
+                }, 150);
+            }
+        }
+
+        function fitRadarMapBounds(mapId) {
+            if (activeLeafletMaps[mapId] && activeLeafletMaps[mapId].latLngs.length > 0) {
+                const latLngs = activeLeafletMaps[mapId].latLngs;
+                const map = activeLeafletMaps[mapId].map;
+                if (latLngs.length > 1) {
+                    map.fitBounds(latLngs, { padding: [40, 40], maxZoom: 12 });
+                } else if (latLngs.length === 1) {
+                    map.setView(latLngs[0], 9);
+                }
+            }
+        }
+
+        function initRadarMap(containerId, flights) {
+            if (!flights || flights.length === 0) return;
+            const container = document.getElementById(containerId);
+            if (!container) return;
+
+            if (activeLeafletMaps[containerId]) {
+                try {
+                    activeLeafletMaps[containerId].map.remove();
+                } catch (e) {}
+                delete activeLeafletMaps[containerId];
+            }
+
+            try {
+                const map = L.map(containerId, {
+                    attributionControl: false,
+                    zoomControl: true
+                });
+
+                L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+                    maxZoom: 19,
+                    subdomains: 'abcd'
+                }).addTo(map);
+
+                const markers = [];
+                const latLngs = [];
+
+                flights.forEach(f => {
+                    const tele = f.telemetry || {};
+                    const lat = tele.latitude;
+                    const lon = tele.longitude;
+                    if (lat === null || lat === undefined || lon === null || lon === undefined) return;
+
+                    const altFt = tele.altitude_feet || 0;
+                    const spdKmh = tele.ground_speed_kmh || 0;
+                    const heading = tele.heading_degrees || 0;
+                    const vSpeed = tele.vertical_speed_fpm || 0;
+                    const fCode = f.flight_number || f.callsign || 'Bilinmiyor';
+                    const model = f.aircraft_model || 'Unknown';
+                    const reg = f.registration || 'N/A';
+                    const routeStr = f.route?.display || `${f.origin_airport_iata || '?'} ➔ ${f.destination_airport_iata || '?'}`;
+                    const squawk = tele.squawk || '---';
+
+                    let planeColor = '#38bdf8';
+                    if (altFt < 1000 || tele.on_ground) {
+                        planeColor = '#94a3b8';
+                    } else if (altFt < 15000) {
+                        planeColor = '#fbbf24';
+                    } else if (altFt < 30000) {
+                        planeColor = '#34d399';
+                    }
+
+                    const iconHtml = `
+                        <div class="radar-plane-icon-wrapper">
+                            <svg class="radar-plane-svg" style="transform: rotate(${heading}deg);" viewBox="0 0 24 24" width="22" height="22" fill="${planeColor}">
+                                <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
+                            </svg>
+                            <span class="radar-plane-tag">${fCode}</span>
+                        </div>
+                    `;
+
+                    const customIcon = L.divIcon({
+                        className: 'radar-plane-marker',
+                        html: iconHtml,
+                        iconSize: [40, 40],
+                        iconAnchor: [20, 20]
+                    });
+
+                    const popupContent = `
+                        <div class="hud-popup-card">
+                            <div class="hud-popup-header">
+                                <span class="hud-popup-flight-code">✈️ ${fCode}</span>
+                                <span class="hud-popup-speed-badge">⚡ ${spdKmh} km/s</span>
+                            </div>
+                            <div class="hud-popup-row">
+                                <span>Model & Tescil:</span>
+                                <span class="hud-popup-val">${model} (${reg})</span>
+                            </div>
+                            <div class="hud-popup-row">
+                                <span>İrtifa:</span>
+                                <span class="hud-popup-val">${altFt.toLocaleString()} ft (${Math.round(altFt * 0.3048).toLocaleString()} m)</span>
+                            </div>
+                            <div class="hud-popup-row">
+                                <span>Dikey Hız:</span>
+                                <span class="hud-popup-val">${vSpeed > 0 ? '+' : ''}${vSpeed} ft/dk ${vSpeed > 500 ? '↗️' : vSpeed < -500 ? '↘️' : '➡️'}</span>
+                            </div>
+                            <div class="hud-popup-row">
+                                <span>Squawk:</span>
+                                <span class="hud-popup-val">Sq: ${squawk}</span>
+                            </div>
+                            <div class="hud-popup-route">
+                                <span>${routeStr}</span>
+                            </div>
+                            <button class="hud-popup-btn" onclick="handleSendQuery('${fCode} nolu uçağın canlı telemetri durumunu detaylı incele.')">
+                                🔍 Bu Uçağın Detaylarını Sor
+                            </button>
+                        </div>
+                    `;
+
+                    const marker = L.marker([lat, lon], { icon: customIcon }).addTo(map);
+                    marker.bindPopup(popupContent);
+                    markers.push(marker);
+                    latLngs.push([lat, lon]);
+                });
+
+                if (latLngs.length > 1) {
+                    map.fitBounds(latLngs, { padding: [40, 40], maxZoom: 12 });
+                } else if (latLngs.length === 1) {
+                    map.setView(latLngs[0], 9);
+                } else {
+                    map.setView([39.0, 35.0], 6);
+                }
+
+                activeLeafletMaps[containerId] = {
+                    map: map,
+                    latLngs: latLngs
+                };
+
+                setTimeout(() => {
+                    map.invalidateSize();
+                }, 250);
+
+            } catch (e) {
+                console.error("Radar map init error:", e);
+            }
+        }
+
+        function appendMessage(role, content, toolCalls = [], model = "", thoughtProcess = null, matchedFlights = []) {
             const list = document.getElementById("messages-list");
             const row = document.createElement("div");
             row.className = `message-row ${role}`;
@@ -485,6 +835,32 @@
                 `;
             }
 
+            let mapHtml = "";
+            let mapContainerId = "";
+            if (role === "assistant" && matchedFlights && matchedFlights.length > 0) {
+                mapMessageCounter++;
+                mapContainerId = `flight-radar-map-${mapMessageCounter}`;
+                mapHtml = `
+                <div class="radar-map-wrapper" id="map-wrapper-${mapContainerId}">
+                    <div class="radar-map-header">
+                        <div class="radar-map-title-group">
+                            <span>🗺️ Canlı Telemetri Radarı</span>
+                            <span class="radar-map-count-badge">${matchedFlights.length} Uçuş Konumlandı</span>
+                        </div>
+                        <div class="radar-map-actions">
+                            <button class="radar-map-btn" onclick="fitRadarMapBounds('${mapContainerId}')" title="Tüm uçakları haritada odakla">
+                                🎯 Odakla
+                            </button>
+                            <button class="radar-map-btn" onclick="toggleRadarMap('${mapContainerId}')">
+                                <span id="map-toggle-text-${mapContainerId}">🗺️ Haritayı Gizle</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div id="${mapContainerId}" class="radar-map-canvas"></div>
+                </div>
+                `;
+            }
+
             row.innerHTML = `
                 <div class="message-sender-tag">
                     ${role === 'user' ? '👤 Siz' : '⚡ Semalar Kafka Asistanı'}
@@ -494,12 +870,19 @@
                     ${thoughtHtml}
                     ${toolCallsHtml}
                     <div>${role === 'user' ? content : formatMessageText(content)}</div>
+                    ${mapHtml}
                 </div>
             `;
 
             list.appendChild(row);
             const container = document.getElementById("chat-messages-container");
             container.scrollTop = container.scrollHeight;
+
+            if (mapContainerId && matchedFlights && matchedFlights.length > 0) {
+                setTimeout(() => {
+                    initRadarMap(mapContainerId, matchedFlights);
+                }, 80);
+            }
         }
 
         async function handleSendQuery(query) {
@@ -523,9 +906,9 @@
 
                 const data = await res.json();
                 if (data.status === "success") {
-                    appendMessage("assistant", data.answer, data.tool_calls, data.model, data.thought_process);
+                    appendMessage("assistant", data.answer, data.tool_calls, data.model, data.thought_process, data.matched_flights);
                 } else {
-                    appendMessage("assistant", `⚠️ **Hata:** ${data.answer || data.error || 'İstek işlenemedi.'}`, data.tool_calls, data.model, data.thought_process);
+                    appendMessage("assistant", `⚠️ **Hata:** ${data.answer || data.error || 'İstek işlenemedi.'}`, data.tool_calls, data.model, data.thought_process, data.matched_flights);
                 }
                 loadLogs(); // Refresh logs after query
             } catch (err) {
