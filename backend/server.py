@@ -77,8 +77,9 @@ mcp_server = MCPServer(
 @mcp_server.tool()
 @audit_tool("query_kafka_stream")
 def query_kafka_stream(
-    query: str = "",
+    city: str = "",
     region: str = "",
+    query: str = "",
     airline: str = "",
     min_speed_kmh: Optional[float] = None,
     min_altitude_feet: Optional[float] = None,
@@ -86,28 +87,31 @@ def query_kafka_stream(
     limit: int = 15,
     **kwargs
 ) -> Dict[str, Any]:
-    """Primary unified multi-filter query tool for live Apache Kafka aircraft telemetry.
+    """Canlı Apache Kafka ADS-B uçuş telemetri akışından uçakları sorgular (81 İl Poligonu, hız, irtifa, havayolu, uçuş kodu).
 
-    PRIMARY USE CASE FOR PROVINCE AIRSPACES: Use this tool whenever a user asks for aircraft over any of
-    the 81 Turkish provinces (e.g., 'Erzurum üzerindeki uçaklar', 'İstanbul semaları', 'Ankara hava sahası').
-    It performs EXACT sub-millisecond 81-province boundary polygon ray-casting (Point-in-Polygon) rather than an approximate circular radius.
-    Also supports compound queries with flight numbers, callsigns, registration tails, airlines, ground speed, and altitude.
+    ÖNEMLİ KURAL (İL / İLÇE / BÖLGE FİLTRESİ):
+    Kullanıcı Türkiye'deki herhangi bir il, ilçe, semt veya bölge üzerindeki uçakları sorduğunda (Örn: 'Çankaya üzerindeki uçaklar', 'Kadıköy semaları', 'Bornova', 'Alanya', 'Bodrum', 'Erzurum', 'İstanbul', 'Ankara'):
+    1. Kullanıcı bir İLÇE, SEMT veya YERLEŞİM YERİ belirtirse (Örn: 'Çankaya', 'Kadıköy', 'Bornova', 'Bodrum', 'Alanya'), LLM olarak bu konumu MUTLAKA bağlı olduğu ana İL adına ('Ankara', 'İstanbul', 'İzmir', 'Muğla', 'Antalya') dönüştürün ve `city` (veya `region`) parametresine gönderin!
+    2. Backend, o ilin mülki sınır poligonunu Ray-Casting PIP (Point-in-Polygon) algoritmasıyla tarayarak tam o ilin/ilçenin hava sahasında bulunan uçakları döndürür.
+    3. Asla il/ilçe sorgularında bu parametreyi boş bırakmayın (`city='Ankara'` vb. gönderin)!
 
     Args:
-        query: Specific flight number (e.g. 'TK10', 'MH21'), callsign ('THY10', 'PGT45K'), or aircraft registration tail ('TC-LJA').
-        region: Target Turkish province name (e.g. 'Erzurum', 'İstanbul', 'Ankara') or macro-region ('MARMARA', 'EGE', 'TR'). Evaluates exact official 81-province boundary polygons via ray-casting.
-        airline: 3-letter ICAO (e.g. 'THY', 'PGT', 'DLH') or 2-letter IATA ('TK', 'PC', 'LH') airline code.
-        min_speed_kmh: Minimum ground speed filter in km/h (e.g. 800, 900).
-        min_altitude_feet: Minimum altitude filter in feet (e.g. 30000).
-        get_stats: Set to True to retrieve overall Kafka stream statistical summary.
-        limit: Maximum number of flight records to return (default: 15).
+        city: Uçuşların filtreleneceği hedef İL adı (Örn: 'Ankara', 'İstanbul', 'İzmir', 'Erzurum'). Kullanıcı bir ilçe/semt belirtirse ('Çankaya', 'Kadıköy', 'Bornova', 'Bodrum') bağlı olduğu İL adını yazın.
+        region: `city` ile eşdeğer İL veya makro coğrafi bölge filtresi (Örn: 'Ankara', 'MARMARA', 'EGE', 'TR').
+        query: Uçuş numarası (örn: 'TK10', 'PC2024'), çağrı kodu (callsign: 'THY10', 'PGT45K') veya uçak kuyruk tescili ('TC-LJA').
+        airline: 3 harfli ICAO (örn: 'THY', 'PGT', 'DLH') veya 2 harfli IATA ('TK', 'PC') havayolu kodu.
+        min_speed_kmh: Filtrelenecek minimum yer hızı (km/s cinsinden, örn: 800).
+        min_altitude_feet: Filtrelenecek minimum uçuş irtifası (feet cinsinden, örn: 30000).
+        get_stats: Tüm Kafka telemetri akışı genel istatistik özetini almak için True yapın.
+        limit: Dönecek maksimum uçuş sayısı (varsayılan: 15).
 
     Returns:
-        Dict[str, Any]: Structured JSON containing matched aircraft with telemetry, exact polygon match metadata, speed, altitude, and route.
+        Dict[str, Any]: Eşleşen uçakların canlı telemetrisi, irtifası, hızı, koordinatları ve rota bilgileri.
     """
+    target_region = city or region or kwargs.get("province") or kwargs.get("country") or ""
     return kafka_store.query_flights(
         query=query,
-        region=region or kwargs.get("country", ""),
+        region=target_region,
         airline=airline,
         min_speed_kmh=min_speed_kmh,
         min_altitude_feet=min_altitude_feet,
@@ -382,8 +386,10 @@ async def api_tools_execute(request):
             args["min_speed_kmh"] = args.pop("speed")
         if "airport" in args and "airport_code" not in args:
             args["airport_code"] = args.pop("airport")
-        if "city" in args and "location" not in args:
+        if tool_name == "find_nearby_aircraft" and "city" in args and "location" not in args:
             args["location"] = args.pop("city")
+        if "province" in args and "city" not in args and "region" not in args:
+            args["city"] = args.pop("province")
 
         res = tool_func(**args)
         return JSONResponse(res)
