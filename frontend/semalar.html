@@ -1,0 +1,1787 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Semalar — Apache Kafka Canlı Uçuş Telemetri Kokpiti & AI Asistanı</title>
+    <meta name="description" content="Apache Kafka canlı uçak telemetri akışı, yapay zeka kokpit asistanı, hız filtreleri ve MCP denetim günlüğü.">
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Cockpit Radar Design System -->
+    <link rel="stylesheet" href="/static/css/style.css">
+    
+    <!-- Leaflet.js CSS & JS for Interactive Radar Map -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+    
+    <style>
+      .btn-kafka-ui {
+        background: rgba(245, 158, 11, 0.15);
+        color: #fbbf24;
+        border: 1px solid rgba(245, 158, 11, 0.4);
+        padding: 6px 14px;
+        border-radius: var(--radius-sm);
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        transition: all 0.2s ease;
+      }
+      .btn-kafka-ui:hover {
+        background: rgba(245, 158, 11, 0.3);
+        transform: translateY(-1px);
+      }
+      .project-badge-tag {
+        font-size: 11px;
+        background: rgba(0, 240, 255, 0.15);
+        color: #38bdf8;
+        border: 1px solid rgba(0, 240, 255, 0.3);
+        padding: 3px 10px;
+        border-radius: 6px;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+      }
+      .kafka-sidebar {
+        width: 440px;
+        display: flex;
+        flex-direction: column;
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-hud);
+        overflow: hidden;
+      }
+
+      /* ============================================================
+         INTERACTIVE RADAR GEO-MAP STYLES
+         ============================================================ */
+      .radar-map-wrapper {
+        margin-top: 14px;
+        background: #0b111e;
+        border: 1px solid rgba(56, 189, 248, 0.35);
+        border-radius: 12px;
+        overflow: hidden;
+        box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5), 0 0 15px rgba(56, 189, 248, 0.12);
+        transition: all 0.2s ease;
+      }
+      .radar-map-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 14px;
+        background: rgba(15, 23, 42, 0.85);
+        border-bottom: 1px solid rgba(56, 189, 248, 0.18);
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .radar-map-title-group {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12px;
+        font-weight: 700;
+        color: #38bdf8;
+      }
+      .radar-map-count-badge {
+        background: rgba(56, 189, 248, 0.18);
+        border: 1px solid rgba(56, 189, 248, 0.45);
+        color: #e0f2fe;
+        font-size: 10.5px;
+        padding: 2px 8px;
+        border-radius: 20px;
+        font-family: var(--font-mono);
+      }
+      .radar-map-actions {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+      }
+      .radar-map-btn {
+        background: rgba(30, 41, 59, 0.85);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        color: #cbd5e1;
+        font-size: 11px;
+        font-weight: 600;
+        padding: 3px 9px;
+        border-radius: 5px;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+      }
+      .radar-map-btn:hover {
+        background: rgba(56, 189, 248, 0.25);
+        border-color: rgba(56, 189, 248, 0.5);
+        color: #38bdf8;
+      }
+      .radar-map-btn.active {
+        background: rgba(239, 68, 68, 0.25);
+        border-color: #ef4444;
+        color: #f87171;
+      }
+      .radar-map-canvas {
+        width: 100%;
+        height: 380px;
+        background: #070c18;
+        position: relative;
+      }
+      .radar-map-canvas .leaflet-tile {
+        filter: brightness(0.55) invert(1) contrast(3) hue-rotate(200deg) saturate(0.3) brightness(0.85);
+      }
+      .radar-map-wrapper.collapsed .radar-map-canvas {
+        display: none;
+      }
+      
+      /* Leaflet Custom Plane Marker Icon */
+      .radar-plane-marker {
+        background: transparent;
+        border: none;
+      }
+      .radar-plane-icon-wrapper {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.9));
+        cursor: pointer;
+        transition: transform 0.15s ease;
+      }
+      .radar-plane-icon-wrapper:hover {
+        transform: scale(1.35);
+        z-index: 9999 !important;
+      }
+      .radar-plane-svg {
+        display: block;
+        transform-origin: center center;
+        transition: transform 0.2s ease;
+      }
+      .radar-plane-tag {
+        font-family: var(--font-mono);
+        font-size: 10px;
+        font-weight: 800;
+        color: #38bdf8;
+        background: rgba(10, 17, 32, 0.95);
+        border: 1px solid rgba(56, 189, 248, 0.6);
+        box-shadow: 0 0 6px rgba(56, 189, 248, 0.35);
+        padding: 1.5px 5px;
+        border-radius: 3px;
+        margin-top: 2px;
+        white-space: nowrap;
+        pointer-events: none;
+      }
+
+      /* Leaflet Custom HUD Popup */
+      .leaflet-popup-content-wrapper {
+        background: rgba(11, 17, 30, 0.96) !important;
+        border: 1px solid rgba(56, 189, 248, 0.45) !important;
+        border-radius: 10px !important;
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.7), 0 0 18px rgba(56, 189, 248, 0.2) !important;
+        color: #f1f5f9 !important;
+        padding: 0 !important;
+        backdrop-filter: blur(10px);
+      }
+      .leaflet-popup-tip {
+        background: rgba(11, 17, 30, 0.96) !important;
+        border: 1px solid rgba(56, 189, 248, 0.45) !important;
+      }
+      .hud-popup-card {
+        padding: 12px 14px;
+        min-width: 250px;
+      }
+      .hud-popup-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        padding-bottom: 6px;
+        margin-bottom: 8px;
+      }
+      .hud-popup-flight-code {
+        font-family: var(--font-mono);
+        font-weight: 800;
+        font-size: 14px;
+        color: #38bdf8;
+      }
+      .hud-popup-speed-badge {
+        font-size: 10.5px;
+        font-weight: 700;
+        padding: 2px 6px;
+        border-radius: 4px;
+        background: rgba(16, 185, 129, 0.15);
+        border: 1px solid rgba(16, 185, 129, 0.4);
+        color: #34d399;
+      }
+      .hud-popup-tcas-alert {
+        background: rgba(239, 68, 68, 0.2);
+        border: 1px solid rgba(239, 68, 68, 0.5);
+        color: #fca5a5;
+        font-size: 11px;
+        font-weight: 700;
+        padding: 4px 8px;
+        border-radius: 5px;
+        margin-bottom: 8px;
+        text-align: center;
+        animation: pulseAlert 1.5s infinite;
+      }
+      @keyframes pulseAlert {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50% { opacity: 0.8; transform: scale(0.98); }
+      }
+      .hud-popup-row {
+        display: flex;
+        justify-content: space-between;
+        font-size: 11px;
+        margin-bottom: 4px;
+        color: #94a3b8;
+      }
+      .hud-popup-val {
+        color: #f1f5f9;
+        font-weight: 600;
+      }
+      .hud-popup-route {
+        margin-top: 6px;
+        padding: 5px 8px;
+        background: rgba(15, 23, 42, 0.85);
+        border: 1px solid rgba(56, 189, 248, 0.25);
+        border-radius: 4px;
+        font-size: 11.5px;
+        text-align: center;
+        color: #38bdf8;
+        font-weight: 700;
+      }
+      .hud-popup-btn-row {
+        display: flex;
+        gap: 6px;
+        margin-top: 8px;
+      }
+      .hud-popup-btn {
+        flex: 1;
+        background: rgba(56, 189, 248, 0.15);
+        border: 1px solid rgba(56, 189, 248, 0.4);
+        color: #38bdf8;
+        padding: 5px;
+        border-radius: 4px;
+        font-size: 10.5px;
+        font-weight: 700;
+        cursor: pointer;
+        text-align: center;
+        transition: all 0.15s ease;
+      }
+      .hud-popup-btn:hover {
+        background: rgba(56, 189, 248, 0.35);
+        color: #fff;
+      }
+      .hud-popup-btn.btn-watch {
+        background: rgba(245, 158, 11, 0.15);
+        border-color: rgba(245, 158, 11, 0.4);
+        color: #fbbf24;
+      }
+      .hud-popup-btn.btn-watch:hover {
+        background: rgba(245, 158, 11, 0.35);
+        color: #fff;
+      }
+      .hud-popup-btn.btn-compare {
+        background: rgba(168, 85, 247, 0.15);
+        border-color: rgba(168, 85, 247, 0.4);
+        color: #c084fc;
+      }
+      .hud-popup-btn.btn-compare:hover {
+        background: rgba(168, 85, 247, 0.35);
+        color: #fff;
+      }
+
+      /* ============================================================
+         WATCHLIST & COMPARISON STYLES
+         ============================================================ */
+      .watchlist-banner {
+        position: fixed;
+        bottom: 18px;
+        right: 18px;
+        background: rgba(15, 23, 42, 0.95);
+        border: 1px solid rgba(245, 158, 11, 0.45);
+        border-radius: 12px;
+        padding: 10px 14px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.7), 0 0 15px rgba(245, 158, 11, 0.2);
+        z-index: 1000;
+        max-width: 320px;
+        backdrop-filter: blur(12px);
+      }
+      .watchlist-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 11.5px;
+        font-weight: 700;
+        color: #fbbf24;
+        margin-bottom: 6px;
+      }
+      .watchlist-chips-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+      }
+      .watchlist-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        background: rgba(30, 41, 59, 0.9);
+        border: 1px solid rgba(245, 158, 11, 0.3);
+        color: #f1f5f9;
+        font-family: var(--font-mono);
+        font-size: 10px;
+        font-weight: 700;
+        padding: 2px 6px;
+        border-radius: 4px;
+      }
+      .watchlist-remove-btn {
+        background: none;
+        border: none;
+        color: #94a3b8;
+        cursor: pointer;
+        font-size: 11px;
+        padding: 0;
+      }
+      .watchlist-remove-btn:hover {
+        color: #ef4444;
+      }
+
+      /* Flight Comparison Modal */
+      .comparison-modal-backdrop {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background: rgba(0, 0, 0, 0.75);
+        backdrop-filter: blur(8px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 2000;
+      }
+      .comparison-modal-card {
+        background: #0f172a;
+        border: 1px solid rgba(168, 85, 247, 0.5);
+        border-radius: 14px;
+        width: 90%;
+        max-width: 760px;
+        padding: 20px;
+        box-shadow: 0 20px 50px rgba(0,0,0,0.8), 0 0 30px rgba(168, 85, 247, 0.2);
+      }
+      .comparison-modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        padding-bottom: 12px;
+        margin-bottom: 16px;
+      }
+      .comparison-title {
+        font-size: 15px;
+        font-weight: 800;
+        color: #c084fc;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .comparison-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+      }
+      .comparison-slot-card {
+        background: rgba(30, 41, 59, 0.6);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 10px;
+        padding: 14px;
+      }
+      .comparison-slot-card.filled {
+        border-color: rgba(168, 85, 247, 0.4);
+      }
+      .comparison-metric-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 6px 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        font-size: 12px;
+      }
+      .comparison-delta-badge {
+        font-size: 10px;
+        font-weight: 700;
+        padding: 1px 5px;
+        border-radius: 3px;
+      }
+      .delta-higher { background: rgba(16, 185, 129, 0.2); color: #34d399; }
+      .delta-lower { background: rgba(239, 68, 68, 0.2); color: #f87171; }
+      
+      /* ============================================================
+         AI THINKING & REASONING ACCORDION
+         ============================================================ */
+      .thought-accordion {
+        margin-bottom: 12px;
+        background: rgba(13, 20, 36, 0.7);
+        border: 1px solid rgba(56, 189, 248, 0.25);
+        border-radius: 10px;
+        overflow: hidden;
+        transition: all 0.2s ease;
+      }
+      .thought-accordion:hover {
+        border-color: rgba(56, 189, 248, 0.45);
+        box-shadow: 0 0 15px rgba(56, 189, 248, 0.08);
+      }
+      .thought-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 12px;
+        background: rgba(15, 23, 42, 0.7);
+        cursor: pointer;
+        user-select: none;
+        transition: background 0.2s ease;
+      }
+      .thought-header:hover {
+        background: rgba(56, 189, 248, 0.1);
+      }
+      .thought-title-group {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12px;
+        font-weight: 600;
+        color: #38bdf8;
+      }
+      .thought-time-badge {
+        font-size: 10px;
+        font-family: var(--font-mono);
+        color: #34d399;
+        background: rgba(16, 185, 129, 0.15);
+        border: 1px solid rgba(16, 185, 129, 0.3);
+        padding: 1px 6px;
+        border-radius: 4px;
+      }
+      .thought-toggle-icon {
+        font-size: 10px;
+        color: #94a3b8;
+        transition: transform 0.2s ease;
+      }
+      .thought-accordion.collapsed .thought-toggle-icon {
+        transform: rotate(-90deg);
+      }
+      .thought-accordion.collapsed .thought-body {
+        display: none;
+      }
+      .thought-body {
+        padding: 12px;
+        border-top: 1px solid rgba(56, 189, 248, 0.12);
+        font-size: 12px;
+        color: #cbd5e1;
+      }
+      .thought-timeline {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        position: relative;
+        padding-left: 4px;
+      }
+      .thought-step {
+        display: flex;
+        gap: 10px;
+        position: relative;
+      }
+      .thought-step-icon {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: rgba(30, 41, 59, 0.9);
+        border: 1px solid rgba(56, 189, 248, 0.35);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 11px;
+        flex-shrink: 0;
+        z-index: 1;
+      }
+      .thought-step-content {
+        flex: 1;
+      }
+      .thought-step-title {
+        font-weight: 700;
+        color: #f1f5f9;
+        font-size: 11.5px;
+        margin-bottom: 2px;
+      }
+      .thought-step-detail {
+        color: #94a3b8;
+        font-size: 11px;
+        line-height: 1.4;
+      }
+      .thought-step-result {
+        margin-top: 4px;
+        display: inline-block;
+        background: rgba(16, 185, 129, 0.12);
+        border: 1px solid rgba(16, 185, 129, 0.3);
+        color: #34d399;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 10.5px;
+        font-family: var(--font-mono);
+      }
+      .thought-raw-block {
+        margin-top: 10px;
+        padding: 8px 10px;
+        background: rgba(7, 10, 18, 0.85);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 6px;
+        font-family: var(--font-mono);
+        font-size: 10.5px;
+        color: #a5f3fc;
+        max-height: 160px;
+        overflow-y: auto;
+        white-space: pre-wrap;
+      }
+    </style>
+</head>
+<body>
+    <div style="display: flex; flex-direction: column; height: 100vh;">
+        <!-- HEADER -->
+        <header class="app-header">
+            <div class="brand-section">
+                <div class="brand-icon">⚡</div>
+                <div>
+                    <div class="brand-title">
+                        SEMALAR
+                        <span class="project-badge-tag">APACHE KAFKA TELEMETRİ KOKPİTİ</span>
+                    </div>
+                    <div class="brand-subtitle">FlightRadar24 ➔ Apache Kafka Canlı Akış, 81 İl Poligon Motoru & FastMCP Asistanı</div>
+                </div>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <a href="http://localhost:8080" target="_blank" class="btn-kafka-ui" title="Docker Kafka UI Paneline Git">
+                    <span>📊</span>
+                    <span>Kafka UI (8080)</span>
+                </a>
+            </div>
+
+            <div class="header-status-group">
+                <div class="status-badge live">
+                    <div class="pulse-dot"></div>
+                    KAFKA: 9092 ONLINE
+                </div>
+
+                <div class="status-badge provider" id="ai-model-badge">
+                    ✨ AI ASİSTANI (HAZIR)
+                </div>
+
+                <button class="btn-icon" id="btn-clear-chat" title="Sohbeti Temizle">🗑️ Temizle</button>
+                <button class="btn-icon" id="btn-toggle-sidebar" title="Kafka Panelini Aç/Kapat">📡 Paneli Gizle</button>
+            </div>
+        </header>
+
+        <!-- MAIN COCKPIT CONTAINER -->
+        <main class="app-container">
+            <!-- LEFT/CENTER: AI CHAT WITH KAFKA TOOLS -->
+            <section class="chat-column">
+                <div class="chat-messages" id="chat-messages-container">
+                    <div class="welcome-hero">
+                        <h2>⚡ Apache Kafka Canlı Telemetri & AI Asistanı</h2>
+                        <p>
+                            Bu kokpitte yapay zeka sorularınızı <strong>Apache Kafka 'live-flights' telemetri akışı</strong>, 
+                            <strong>81 il sınır poligon motoru (Ray-Casting)</strong> ve 
+                            <strong>FastMCP araçları</strong> ile 0.3 milisaniyelik gecikmeyle analiz ederek yanıtlar.
+                        </p>
+                        
+                        <div class="prompt-chips-container">
+                            <button class="prompt-chip" data-query="Hava sahasında acil durum (Squawk 7700/7600/7500) veya ani irtifa kaybı bildiren uçak var mı?">🚨 Acil Durum & Squawk Kontrolü</button>
+                            <button class="prompt-chip" data-query="İstanbul Havalimanı'na (IST) şu an yaklaşmada olan veya inmekte olan uçakları listele">🛫 IST İniş & Terminal Trafiği</button>
+                            <button class="prompt-chip" data-query="Ankara merkezine 50 km yarıçapındaki uçakları mesafelerine göre sırala">📍 Ankara 50 km Yarıçapı</button>
+                            <button class="prompt-chip" data-query="Şu an hızlı tırmanışta (climbing > 1000 fpm) olan uçaklar hangileri?">📈 Tırmanışta Olan Uçuşlar</button>
+                            <button class="prompt-chip" data-query="Türkiye hava sahasını transit olarak kullanan uluslararası uçuşları listele">🌍 Transit Üst Geçiş Koridoru</button>
+                            <button class="prompt-chip" data-query="Semalarımızda şu an uçan modellerin (B777, A350, B737 vb.) ve havayollarının filo analitiği nedir?">📊 Filo & Uçak Modeli Analitiği</button>
+                            <button class="prompt-chip" data-query="Kafka akışında 900 km/s hızın üzerindeki en hızlı uçakları ve modellerini listele">🚀 900 km/s Üzeri Hızlı Uçaklar</button>
+                        </div>
+                    </div>
+
+                    <div id="messages-list"></div>
+                    
+                    <div id="loading-indicator" class="message-row assistant" style="display: none;">
+                        <div class="message-sender-tag">⚡ Semalar Kafka Asistanı</div>
+                        <div class="typing-radar">
+                            <div class="radar-spinner"></div>
+                            <span>Apache Kafka canlı telemetri akışı taranıyor...</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CHAT INPUT -->
+                <div class="chat-input-container">
+                    <div class="chat-input-wrapper">
+                        <input type="text" id="chat-input" class="chat-input" placeholder="Uçuş kodu (örn: TK10), il/bölge (örn: Ankara, Marmara), hız (örn: 900 km/s) veya filo sorun..." autofocus>
+                    </div>
+                    <button id="btn-send-chat" class="btn-send">
+                        <span>Gönder</span>
+                        <span>🚀</span>
+                    </button>
+                </div>
+            </section>
+
+            <!-- RIGHT: KAFKA TELEMETRY SIDEBAR (KPIS, SPEED FILTERS & LOGS) -->
+            <aside class="kafka-sidebar" id="kafka-sidebar">
+                <!-- SIDEBAR HEADER WITH SUB-TABS -->
+                <div class="sidebar-header" style="flex-direction: column; gap: 10px; align-items: stretch;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div class="nav-tabs-group" style="padding: 2px;">
+                            <button class="nav-tab-btn active" id="tab-btn-flights" style="padding: 4px 10px; font-size: 11.5px;">
+                                <span>🛫</span>
+                                <span>Canlı Uçuşlar</span>
+                            </button>
+                            <button class="nav-tab-btn" id="tab-btn-logs" style="padding: 4px 10px; font-size: 11.5px;">
+                                <span>📋</span>
+                                <span id="tab-logs-badge">MCP Logları</span>
+                            </button>
+                        </div>
+
+                        <div style="display: flex; gap: 6px;">
+                            <button class="btn-icon" id="btn-sync-kafka" style="padding: 4px 8px; font-size: 11px;" title="Kafka'dan Belleğe Yeniden Çek">🔄 Senkronize</button>
+                            <button class="btn-icon" id="btn-produce-fresh" style="padding: 4px 8px; font-size: 11px; background: rgba(16, 185, 129, 0.15); color: #34d399; border-color: rgba(16, 185, 129, 0.3);" title="FlightRadar24'ten Türkiye Semalarını Çek ve Kafka'ya Bas">
+                                🚀 Taze Veri Bas
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 4 MINI KPI CARDS -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 12px; background: var(--bg-card-subtle); border-bottom: 1px solid var(--border-color);">
+                    <div style="background: rgba(7, 10, 18, 0.6); padding: 8px 10px; border-radius: 6px; border: 1px solid rgba(0, 240, 255, 0.15);">
+                        <span style="font-size: 10px; color: #94a3b8; text-transform: uppercase; display: block;">Uçuş Havuzu</span>
+                        <span style="font-size: 15px; font-weight: 800; color: #00f0ff; font-family: var(--font-mono);" id="kpi-total-flights">0</span>
+                    </div>
+                    <div style="background: rgba(7, 10, 18, 0.6); padding: 8px 10px; border-radius: 6px; border: 1px solid rgba(56, 189, 248, 0.15);">
+                        <span style="font-size: 10px; color: #94a3b8; text-transform: uppercase; display: block;">Havayolu</span>
+                        <span style="font-size: 15px; font-weight: 800; color: #38bdf8; font-family: var(--font-mono);" id="kpi-total-airlines">0</span>
+                    </div>
+                    <div style="background: rgba(7, 10, 18, 0.6); padding: 8px 10px; border-radius: 6px; border: 1px solid rgba(245, 158, 11, 0.15);">
+                        <span style="font-size: 10px; color: #94a3b8; text-transform: uppercase; display: block;">Maks Hız</span>
+                        <span style="font-size: 15px; font-weight: 800; color: #fbbf24; font-family: var(--font-mono);" id="kpi-max-speed">0 km/s</span>
+                    </div>
+                    <div style="background: rgba(7, 10, 18, 0.6); padding: 8px 10px; border-radius: 6px; border: 1px solid rgba(16, 185, 129, 0.15);">
+                        <span style="font-size: 10px; color: #94a3b8; text-transform: uppercase; display: block;">Maks İrtifa</span>
+                        <span style="font-size: 15px; font-weight: 800; color: #34d399; font-family: var(--font-mono);" id="kpi-max-alt">0 ft</span>
+                    </div>
+                </div>
+
+                <!-- SIDEBAR CONTENT -->
+                <div class="sidebar-content" style="padding: 12px; gap: 12px;">
+                    <!-- FLIGHTS LIST VIEW -->
+                    <div id="sidebar-flights-view" style="display: flex; flex-direction: column; gap: 10px; height: 100%;">
+                        <!-- SPEED PILLS -->
+                        <div class="speed-pills-group" id="speed-filters-container">
+                            <button class="speed-pill-btn active" data-speed="" style="font-size: 11px; padding: 4px 8px;">Tümü</button>
+                            <button class="speed-pill-btn" data-speed="600" style="font-size: 11px; padding: 4px 8px;">&gt;600</button>
+                            <button class="speed-pill-btn" data-speed="800" style="font-size: 11px; padding: 4px 8px;">&gt;800</button>
+                            <button class="speed-pill-btn" data-speed="900" style="font-size: 11px; padding: 4px 8px;">🚀 &gt;900</button>
+                            <button class="speed-pill-btn" data-speed="1000" style="font-size: 11px; padding: 4px 8px;">🔥 &gt;1000</button>
+                        </div>
+
+                        <!-- SEARCH INPUT -->
+                        <form id="search-form" class="search-input-group" style="max-width: 100%;">
+                            <input type="text" id="search-input" placeholder="Uçuş kodu, model ara (örn: TK, B77L)..." style="font-size: 12px; padding: 6px 10px;">
+                            <button type="submit" class="btn-icon" style="padding: 5px 10px;">🔍</button>
+                        </form>
+
+                        <div style="display: flex; justify-content: space-between; font-size: 11.5px; color: #94a3b8;">
+                            <span>Eşleşen: <strong style="color: #38bdf8;" id="flights-count-display">0</strong> uçak</span>
+                            <span style="color: #64748b;">(Tıklayarak AI'ya Sorun)</span>
+                        </div>
+
+                        <!-- FLIGHTS SCROLLABLE CONTAINER -->
+                        <div id="kafka-flights-list" style="display: flex; flex-direction: column; gap: 8px; overflow-y: auto; flex: 1; max-height: calc(100vh - 350px);">
+                            <div style="text-align: center; color: #64748b; font-size: 12px; padding: 20px 0;">
+                                Kafka uçuş verileri yükleniyor...
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- AUDIT LOGS VIEW -->
+                    <div id="sidebar-logs-view" style="display: none; flex-direction: column; gap: 8px; height: 100%;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-size: 12px; color: #38bdf8; font-weight: 600;">📋 Canlı MCP İstek Günlüğü</span>
+                            <button class="btn-icon" id="btn-refresh-logs" style="font-size: 11px; padding: 2px 6px;">🔄</button>
+                        </div>
+                        <div style="overflow-y: auto; flex: 1; max-height: calc(100vh - 280px);">
+                            <table class="audit-table" style="font-size: 11px;">
+                                <thead>
+                                    <tr>
+                                        <th>Zaman</th>
+                                        <th>MCP Aracı</th>
+                                        <th>Kayıt</th>
+                                        <th>Süre</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="audit-table-body">
+                                    <tr>
+                                        <td colspan="4" style="text-align: center; padding: 20px; color: #64748b;">
+                                             Henüz MCP isteği kaydedilmedi.
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div style="margin-top: auto; background: rgba(0, 240, 255, 0.03); border: 1px solid rgba(56, 189, 248, 0.15); border-radius: 8px; padding: 10px; font-size: 11px; color: #94a3b8;">
+                        <strong style="color: #38bdf8; display: block; margin-bottom: 2px;">⚡ Kafka Canlı Telemetri Akışı:</strong>
+                        Türkiye hava sahasındaki tüm uçuşlar 15 saniyelik döngüyle Kafka 'live-flights' topic'ine akar ve 81 il poligonuyla taranır.
+                    </div>
+                </div>
+            </aside>
+        </main>
+    </div>
+
+    <!-- WATCHLIST FLOATING BANNER -->
+    <div id="flight-watchlist-container" class="watchlist-banner" style="display: none;">
+        <div class="watchlist-header">
+            <span>🔔 Takip Listesi (<span id="watchlist-count">0</span>)</span>
+            <button class="watchlist-remove-btn" onclick="clearWatchlist()" style="color: #f87171; font-weight: 700;">Temizle</button>
+        </div>
+        <div id="watchlist-chips" class="watchlist-chips-list"></div>
+    </div>
+
+    <!-- FLIGHT COMPARISON MODAL -->
+    <div id="flight-comparison-modal" class="comparison-modal-backdrop" style="display: none;">
+        <div class="comparison-modal-card">
+            <div class="comparison-modal-header">
+                <div class="comparison-title">
+                    <span>⚖️</span>
+                    <span>Havacılık Telemetri & İkili Uçuş Kıyaslama</span>
+                </div>
+                <button class="watchlist-remove-btn" onclick="closeComparisonModal()" style="font-size: 16px; color: #cbd5e1;">✕</button>
+            </div>
+            <div class="comparison-grid" id="comparison-slots-content">
+                <!-- Dynamically populated comparison slots -->
+            </div>
+        </div>
+    </div>
+
+    <!-- PURE NATIVE JAVASCRIPT LOGIC FOR PROJECT 2 -->
+    <script>
+        const API_BASE = window.location.origin;
+        let isChatLoading = false;
+        let isSidebarOpen = true;
+        let currentMinSpeed = "";
+        let currentSearchQuery = "";
+        let isProducing = false;
+
+        function formatMessageText(text) {
+            if (!text) return "";
+            return text
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/^• (.*$)/gim, '<div style="display:flex; gap:8px; margin:4px 0; padding-left:6px;"><span style="color:#38bdf8">✈</span><div>$1</div></div>')
+                .replace(/^- (.*$)/gim, '<div style="display:flex; gap:8px; margin:4px 0; padding-left:6px;"><span style="color:#38bdf8">✈</span><div>$1</div></div>')
+                .replace(/\n/g, '<br>');
+        }
+
+        function renderThoughtProcessHtml(thought) {
+            if (!thought) return "";
+            const rawText = (thought.raw_reasoning || "").trim();
+            const traces = thought.tool_traces || [];
+            if (!rawText && traces.length === 0) return "";
+
+            let tracesHtml = "";
+            if (traces.length > 0) {
+                tracesHtml = `
+                <div style="margin-bottom: ${rawText ? '12px' : '0'};">
+                    <div style="font-size: 10.5px; color: #38bdf8; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+                        <span>⚙️</span> FastMCP Araç İcraları (${traces.length})
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 6px;">
+                        ${traces.map(tr => `
+                            <div style="background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 6px; padding: 6px 10px; font-size: 11.5px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <span style="color: #38bdf8; font-weight: 700; font-family: var(--font-mono);">${tr.tool_name}</span>
+                                    <span style="font-size: 10px; color: #34d399; background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.3); padding: 1px 6px; border-radius: 4px;">${tr.matched_records} kayıt</span>
+                                </div>
+                                <div style="color: #94a3b8; font-size: 10.5px; font-family: var(--font-mono); margin-top: 3px; word-break: break-all;">
+                                    ${JSON.stringify(tr.arguments || {})}
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+                `;
+            }
+
+            let rawHtml = "";
+            if (rawText) {
+                const escapedText = rawText.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                rawHtml = `
+                <div>
+                    <div style="font-size: 10.5px; color: #a78bfa; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+                        <span>🧠</span> Model İç Düşünce Akışı (Chain of Thought):
+                    </div>
+                    <div class="thought-raw-block">${escapedText}</div>
+                </div>
+                `;
+            }
+
+            return `
+            <div class="thought-accordion">
+                <div class="thought-header" onclick="this.parentElement.classList.toggle('collapsed')">
+                    <div class="thought-title-group">
+                        <span>🧠</span>
+                        <span>Model Düşünce Akışı (Thinking)</span>
+                        <span class="thought-time-badge">⚡ ${thought.duration_seconds || 0}s</span>
+                        ${traces.length > 0 ? `<span style="font-size: 10px; color: #38bdf8; background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.3); padding: 1px 6px; border-radius: 4px;">${traces.length} MCP Tool</span>` : ''}
+                    </div>
+                    <span class="thought-toggle-icon">▼</span>
+                </div>
+                <div class="thought-body">
+                    ${tracesHtml}
+                    ${rawHtml}
+                </div>
+            </div>
+            `;
+        }
+
+        let activeLeafletMaps = {};
+        let mapMessageCounter = 0;
+        window.watchlistFlights = [];
+        window.comparisonSlots = [null, null];
+
+        // ============================================================
+        // 🗺️ RADAR MAP CONTROLS & EXPORT FUNCTIONS
+        // ============================================================
+        function toggleRadarMap(mapId) {
+            const wrapper = document.getElementById(`map-wrapper-${mapId}`);
+            const btnText = document.getElementById(`map-toggle-text-${mapId}`);
+            if (!wrapper) return;
+            wrapper.classList.toggle("collapsed");
+            const isCollapsed = wrapper.classList.contains("collapsed");
+            if (btnText) {
+                btnText.textContent = isCollapsed ? "🗺️ Haritayı Göster" : "🗺️ Haritayı Gizle";
+            }
+            if (!isCollapsed && activeLeafletMaps[mapId]) {
+                setTimeout(() => {
+                    activeLeafletMaps[mapId].map.invalidateSize();
+                }, 150);
+            }
+        }
+
+        function fitRadarMapBounds(mapId) {
+            const mapObj = activeLeafletMaps[mapId];
+            if (!mapObj) return;
+            if (mapObj.polyBounds && mapObj.polyBounds.isValid()) {
+                mapObj.map.fitBounds(mapObj.polyBounds, { padding: [30, 30], maxZoom: 12 });
+            } else if (mapObj.latLngs && mapObj.latLngs.length > 1) {
+                mapObj.map.fitBounds(mapObj.latLngs, { padding: [40, 40], maxZoom: 12 });
+            } else if (mapObj.latLngs && mapObj.latLngs.length === 1) {
+                mapObj.map.setView(mapObj.latLngs[0], 9);
+            }
+        }
+
+        function toggleHeatmap(mapId) {
+            const mapObj = activeLeafletMaps[mapId];
+            if (!mapObj || !mapObj.heatLayer) return;
+            const btn = document.getElementById(`heat-btn-${mapId}`);
+            if (mapObj.isHeatActive) {
+                mapObj.map.removeLayer(mapObj.heatLayer);
+                mapObj.isHeatActive = false;
+                if (btn) btn.classList.remove("active");
+            } else {
+                mapObj.heatLayer.addTo(mapObj.map);
+                mapObj.isHeatActive = true;
+                if (btn) btn.classList.add("active");
+            }
+        }
+
+        function exportMapFlightsCSV(mapId) {
+            const mapObj = activeLeafletMaps[mapId];
+            if (!mapObj || !mapObj.flights || mapObj.flights.length === 0) {
+                alert("İndirilecek uçuş verisi bulunamadı.");
+                return;
+            }
+            const flights = mapObj.flights;
+            const headers = ["Flight_Number", "Callsign", "Model", "Registration", "Airline", "Speed_kmh", "Altitude_ft", "VSpeed_fpm", "Heading", "Latitude", "Longitude", "Route", "Squawk", "Timestamp"];
+            const rows = flights.map(f => {
+                const tele = f.telemetry || {};
+                return [
+                    `"${f.flight_number || ''}"`,
+                    `"${f.callsign || ''}"`,
+                    `"${f.aircraft_model || ''}"`,
+                    `"${f.registration || ''}"`,
+                    `"${f.airline_iata || f.airline_icao || ''}"`,
+                    tele.ground_speed_kmh || 0,
+                    tele.altitude_feet || 0,
+                    tele.vertical_speed_fpm || 0,
+                    tele.heading_degrees || 0,
+                    tele.latitude || 0,
+                    tele.longitude || 0,
+                    `"${f.route?.display || ''}"`,
+                    `"${tele.squawk || ''}"`,
+                    `"${new Date().toISOString()}"`
+                ].join(",");
+            });
+
+            const csvContent = "\uFEFF" + [headers.join(","), ...rows].join("\r\n");
+            const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+            const link = document.createElement("a");
+            const url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            link.setAttribute("download", `semalar_telemetri_${Date.now()}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        // ============================================================
+        // 🔔 WATCHLIST SYSTEM
+        // ============================================================
+        function addToWatchlist(flightJsonStr) {
+            const f = typeof flightJsonStr === 'string' ? JSON.parse(decodeURIComponent(flightJsonStr)) : flightJsonStr;
+            const fCode = f.flight_number || f.callsign || 'Bilinmiyor';
+            if (window.watchlistFlights.some(w => (w.flight_number || w.callsign) === fCode)) {
+                alert(`${fCode} zaten takip listenizde.`);
+                return;
+            }
+            window.watchlistFlights.push(f);
+            renderWatchlist();
+        }
+
+        function removeFromWatchlist(fCode) {
+            window.watchlistFlights = window.watchlistFlights.filter(w => (w.flight_number || w.callsign) !== fCode);
+            renderWatchlist();
+        }
+
+        function clearWatchlist() {
+            window.watchlistFlights = [];
+            renderWatchlist();
+        }
+
+        function renderWatchlist() {
+            const container = document.getElementById("flight-watchlist-container");
+            const countEl = document.getElementById("watchlist-count");
+            const chipsEl = document.getElementById("watchlist-chips");
+            if (!container || !chipsEl) return;
+
+            countEl.textContent = window.watchlistFlights.length;
+            if (window.watchlistFlights.length === 0) {
+                container.style.display = "none";
+                return;
+            }
+            container.style.display = "block";
+            chipsEl.innerHTML = window.watchlistFlights.map(w => {
+                const code = w.flight_number || w.callsign;
+                const spd = w.telemetry?.ground_speed_kmh || 0;
+                const alt = w.telemetry?.altitude_feet || 0;
+                return `
+                <div class="watchlist-chip" title="${w.aircraft_model || ''} | ${alt} ft | ${spd} km/s">
+                    <span>✈️ ${code} (${spd} km/s)</span>
+                    <button class="watchlist-remove-btn" onclick="removeFromWatchlist('${code}')">✕</button>
+                </div>
+                `;
+            }).join("");
+        }
+
+        // ============================================================
+        // ⚖️ SIDE-BY-SIDE FLIGHT COMPARISON MODAL
+        // ============================================================
+        function addToComparison(flightJsonStr) {
+            const f = typeof flightJsonStr === 'string' ? JSON.parse(decodeURIComponent(flightJsonStr)) : flightJsonStr;
+            if (!window.comparisonSlots[0]) {
+                window.comparisonSlots[0] = f;
+            } else if (!window.comparisonSlots[1]) {
+                window.comparisonSlots[1] = f;
+            } else {
+                window.comparisonSlots[0] = window.comparisonSlots[1];
+                window.comparisonSlots[1] = f;
+            }
+            renderComparisonModal();
+            document.getElementById("flight-comparison-modal").style.display = "flex";
+        }
+
+        function closeComparisonModal() {
+            document.getElementById("flight-comparison-modal").style.display = "none";
+        }
+
+        function renderComparisonModal() {
+            const container = document.getElementById("comparison-slots-content");
+            if (!container) return;
+
+            const f1 = window.comparisonSlots[0];
+            const f2 = window.comparisonSlots[1];
+
+            function renderSlotCard(f, slotIndex, otherF) {
+                if (!f) {
+                    return `
+                    <div class="comparison-slot-card">
+                        <div style="text-align: center; padding: 40px 10px; color: #64748b;">
+                            <div style="font-size: 28px; margin-bottom: 8px;">✈️</div>
+                            <div style="font-size: 13px; font-weight: 700;">Uçak ${slotIndex + 1} Seçilmedi</div>
+                            <div style="font-size: 11px; margin-top: 4px;">Haritadaki bir uçağa tıklayıp "⚖️ Kıyasla" butonuna basın.</div>
+                        </div>
+                    </div>
+                    `;
+                }
+
+                const tele = f.telemetry || {};
+                const spd1 = tele.ground_speed_kmh || 0;
+                const alt1 = tele.altitude_feet || 0;
+                const vs1 = tele.vertical_speed_fpm || 0;
+
+                let spdBadge = "";
+                let altBadge = "";
+                let vsBadge = "";
+
+                if (otherF && otherF.telemetry) {
+                    const spd2 = otherF.telemetry.ground_speed_kmh || 0;
+                    const alt2 = otherF.telemetry.altitude_feet || 0;
+                    const vs2 = otherF.telemetry.vertical_speed_fpm || 0;
+
+                    if (spd1 !== spd2) {
+                        const diff = spd1 - spd2;
+                        spdBadge = `<span class="comparison-delta-badge ${diff > 0 ? 'delta-higher' : 'delta-lower'}">${diff > 0 ? '+' : ''}${diff} km/s</span>`;
+                    }
+                    if (alt1 !== alt2) {
+                        const diff = alt1 - alt2;
+                        altBadge = `<span class="comparison-delta-badge ${diff > 0 ? 'delta-higher' : 'delta-lower'}">${diff > 0 ? '+' : ''}${diff.toLocaleString()} ft</span>`;
+                    }
+                    if (vs1 !== vs2) {
+                        const diff = vs1 - vs2;
+                        vsBadge = `<span class="comparison-delta-badge ${diff > 0 ? 'delta-higher' : 'delta-lower'}">${diff > 0 ? '+' : ''}${diff} ft/dk</span>`;
+                    }
+                }
+
+                return `
+                <div class="comparison-slot-card filled">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                        <span style="font-family: var(--font-mono); font-size: 16px; font-weight: 800; color: #38bdf8;">✈️ ${f.flight_number || f.callsign}</span>
+                        <span style="font-size: 11px; color: #94a3b8;">${f.airline_iata || f.airline_icao || 'Havayolu'}</span>
+                    </div>
+                    <div class="comparison-metric-row">
+                        <span style="color: #94a3b8;">Model / Gövde:</span>
+                        <span style="font-weight: 700; color: #f1f5f9;">${f.aircraft_model || 'Unknown'} (${f.registration || 'N/A'})</span>
+                    </div>
+                    <div class="comparison-metric-row">
+                        <span style="color: #94a3b8;">Yer Hızı:</span>
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <span style="font-weight: 700; color: #34d399;">⚡ ${spd1} km/s</span>
+                            ${spdBadge}
+                        </div>
+                    </div>
+                    <div class="comparison-metric-row">
+                        <span style="color: #94a3b8;">İrtifa Seviyesi:</span>
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <span style="font-weight: 700; color: #fbbf24;">🏔️ ${alt1.toLocaleString()} ft</span>
+                            ${altBadge}
+                        </div>
+                    </div>
+                    <div class="comparison-metric-row">
+                        <span style="color: #94a3b8;">Dikey Hız (V/S):</span>
+                        <div style="display: flex; align-items: center; gap: 6px;">
+                            <span style="font-weight: 700; color: #e0f2fe;">${vs1 > 0 ? '+' : ''}${vs1} ft/dk</span>
+                            ${vsBadge}
+                        </div>
+                    </div>
+                    <div class="comparison-metric-row">
+                        <span style="color: #94a3b8;">Rota:</span>
+                        <span style="font-weight: 700; color: #38bdf8; font-size: 11px;">${f.route?.display || '---'}</span>
+                    </div>
+                    <div class="comparison-metric-row">
+                        <span style="color: #94a3b8;">Squawk Transponder:</span>
+                        <span style="font-family: var(--font-mono); color: #cbd5e1;">Sq: ${tele.squawk || '---'}</span>
+                    </div>
+                </div>
+                `;
+            }
+
+            container.innerHTML = `
+                ${renderSlotCard(f1, 0, f2)}
+                ${renderSlotCard(f2, 1, f1)}
+            `;
+        }
+
+        // ============================================================
+        // 🗺️ INITIALIZE INTERACTIVE RADAR GEO-MAP
+        // ============================================================
+        function drawProvincePolygon(polyData, map) {
+            if (!polyData || !polyData.coordinates || !Array.isArray(polyData.coordinates)) return null;
+            try {
+                const geomType = (polyData.geometry_type || "").toLowerCase();
+                let latLngGroups = [];
+
+                if (geomType === "multipolygon" || (Array.isArray(polyData.coordinates[0]) && Array.isArray(polyData.coordinates[0][0]) && Array.isArray(polyData.coordinates[0][0][0]))) {
+                    // MultiPolygon: array of polygons
+                    polyData.coordinates.forEach(subPoly => {
+                        if (Array.isArray(subPoly) && subPoly.length > 0 && Array.isArray(subPoly[0])) {
+                            const ring = subPoly[0]
+                                .map(pt => [parseFloat(pt[1]), parseFloat(pt[0])])
+                                .filter(pt => !isNaN(pt[0]) && !isNaN(pt[1]));
+                            if (ring.length > 2) latLngGroups.push(ring);
+                        }
+                    });
+                } else if (Array.isArray(polyData.coordinates[0])) {
+                    // Single Polygon
+                    const ring = polyData.coordinates[0]
+                        .map(pt => [parseFloat(pt[1]), parseFloat(pt[0])])
+                        .filter(pt => !isNaN(pt[0]) && !isNaN(pt[1]));
+                    if (ring.length > 2) latLngGroups.push(ring);
+                }
+
+                if (latLngGroups.length === 0) return null;
+
+                const polyLayer = L.polygon(latLngGroups, {
+                    color: "#00f0ff",
+                    weight: 2.8,
+                    opacity: 0.95,
+                    fillColor: "#0284c7",
+                    fillOpacity: 0.18,
+                    dashArray: "5, 6"
+                }).addTo(map);
+
+                polyLayer.bindTooltip(`📍 <strong>${polyData.name}</strong> İl Sınırı`, { permanent: false, direction: 'center' });
+                return polyLayer;
+            } catch (e) {
+                console.warn("drawProvincePolygon error:", e);
+                return null;
+            }
+        }
+
+        function initRadarMap(containerId, flights, geoOverlays = []) {
+            if (!flights || flights.length === 0) return;
+            const container = document.getElementById(containerId);
+            if (!container) return;
+
+            if (activeLeafletMaps[containerId]) {
+                try {
+                    activeLeafletMaps[containerId].map.remove();
+                } catch (e) {}
+                delete activeLeafletMaps[containerId];
+            }
+
+            // Cleanup lingering leaflet attributes if any
+            if (container._leaflet_id) {
+                try { container._leaflet_id = null; } catch(e){}
+            }
+
+            try {
+                const map = L.map(containerId, {
+                    attributionControl: false,
+                    zoomControl: true,
+                    minZoom: 4,
+                    maxZoom: 19
+                });
+
+                // OpenStreetMap Tile Layer with Radar Cyber Dark CSS
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    maxZoom: 19,
+                    subdomains: ['a', 'b', 'c'],
+                    attribution: '&copy; OpenStreetMap contributors'
+                }).addTo(map);
+
+                const markers = [];
+                const latLngs = [];
+                const heatPoints = [];
+                let detectedPolyBounds = null;
+                const activeRouteLayerGroup = L.layerGroup().addTo(map);
+
+                // 1. Draw Geo Overlays (81 Province Polygon & Airport Approach Cones)
+                if (geoOverlays && Array.isArray(geoOverlays) && geoOverlays.length > 0) {
+                    geoOverlays.forEach(ov => {
+                        try {
+                            if (ov.type === 'province_polygon' && ov.data) {
+                                const polyLayer = drawProvincePolygon(ov.data, map);
+                                if (polyLayer) {
+                                    try {
+                                        const b = polyLayer.getBounds();
+                                        if (b && b.isValid()) detectedPolyBounds = b;
+                                    } catch(bErr) {}
+                                }
+                            } else if (ov.type === 'approach_cone' && ov.data) {
+                                const cone = ov.data;
+                                const circle = L.circle([parseFloat(cone.center.lat), parseFloat(cone.center.lon)], {
+                                    radius: (cone.radius_km || 25.0) * 1000,
+                                    color: "#f59e0b",
+                                    weight: 2.0,
+                                    dashArray: "6, 6",
+                                    fillColor: "#fbbf24",
+                                    fillOpacity: 0.10
+                                }).addTo(map);
+                                circle.bindTooltip(`🛬 <strong>${cone.airport}</strong> (${cone.name}) ILS Yaklaşma Sahası (25 km)`, { permanent: false });
+                            }
+                        } catch (ovErr) {
+                            console.warn("GeoOverlay render error:", ovErr);
+                        }
+                    });
+                }
+
+                // 2. Iterate Flights, Place Markers, Dynamic Route On-Click, and Telemetry Popups
+                flights.forEach(f => {
+                    try {
+                        const tele = f.telemetry || {};
+                        let lat = tele.latitude !== undefined && tele.latitude !== null ? tele.latitude : f.latitude;
+                        let lon = tele.longitude !== undefined && tele.longitude !== null ? tele.longitude : f.longitude;
+                        if (lat === null || lat === undefined || lon === null || lon === undefined) return;
+                        lat = parseFloat(lat);
+                        lon = parseFloat(lon);
+                        if (isNaN(lat) || isNaN(lon)) return;
+
+                        const altFt = parseFloat(tele.altitude_feet || f.altitude_feet || 0);
+                        const spdKmh = Math.round(parseFloat(tele.ground_speed_kmh || f.ground_speed_kmh || 0));
+                        const spdKts = Math.round(parseFloat(tele.ground_speed_knots || f.ground_speed_knots || (spdKmh / 1.852) || 0));
+                        const heading = parseFloat(tele.heading_degrees || f.heading_degrees || 0);
+                        const vSpeed = parseFloat(tele.vertical_speed_fpm || f.vertical_speed_fpm || 0);
+                        const fCode = f.flight_number || f.callsign || 'Bilinmiyor';
+                        const model = f.aircraft_model || 'Unknown';
+                        const reg = f.registration || 'N/A';
+                        const routeStr = f.route?.display || `${f.origin_airport_iata || '?'} ➔ ${f.destination_airport_iata || '?'}`;
+                        const squawk = tele.squawk || f.squawk || '---';
+
+                        heatPoints.push([lat, lon, 0.85]);
+
+                        // Color classification by altitude
+                        let planeColor = '#38bdf8';
+                        if (altFt < 1000 || tele.on_ground) {
+                            planeColor = '#94a3b8';
+                        } else if (altFt < 15000) {
+                            planeColor = '#fbbf24';
+                        } else if (altFt < 30000) {
+                            planeColor = '#34d399';
+                        }
+
+                        const iconHtml = `
+                            <div class="radar-plane-icon-wrapper">
+                                <svg class="radar-plane-svg" style="transform: rotate(${heading}deg);" viewBox="0 0 24 24" width="24" height="24" fill="${planeColor}">
+                                    <path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z"/>
+                                </svg>
+                                <span class="radar-plane-tag">${fCode}</span>
+                            </div>
+                        `;
+
+                        const customIcon = L.divIcon({
+                            className: 'radar-plane-marker',
+                            html: iconHtml,
+                            iconSize: [60, 42],
+                            iconAnchor: [30, 21]
+                        });
+
+                        // TCAS alert block in popup
+                        let tcasAlertHtml = "";
+                        if (f.tcas_alert) {
+                            tcasAlertHtml = `
+                            <div class="hud-popup-tcas-alert">
+                                ⚠️ ${f.tcas_alert.severity || 'TCAS UYARISI'}: ${f.tcas_alert.separation_km} km / ${f.tcas_alert.vert_diff_ft} ft ayrım!
+                            </div>
+                            `;
+                        }
+
+                        const encodedFlight = encodeURIComponent(JSON.stringify(f));
+
+                        const popupContent = `
+                            <div class="hud-popup-card">
+                                <div class="hud-popup-header">
+                                    <span class="hud-popup-flight-code">✈️ ${fCode}</span>
+                                    <span class="hud-popup-speed-badge">⚡ ${spdKts} kts (${spdKmh} km/sa)</span>
+                                </div>
+                                ${tcasAlertHtml}
+                                <div class="hud-popup-row">
+                                    <span>Model & Tescil:</span>
+                                    <span class="hud-popup-val">${model} (${reg})</span>
+                                </div>
+                                <div class="hud-popup-row">
+                                    <span>İrtifa:</span>
+                                    <span class="hud-popup-val">${altFt.toLocaleString()} ft (${Math.round(altFt * 0.3048).toLocaleString()} m)</span>
+                                </div>
+                                <div class="hud-popup-row">
+                                    <span>Dikey Hız:</span>
+                                    <span class="hud-popup-val">${vSpeed > 0 ? '+' : ''}${vSpeed} ft/dk ${vSpeed > 500 ? '↗️' : vSpeed < -500 ? '↘️' : '➡️'}</span>
+                                </div>
+                                <div class="hud-popup-row">
+                                    <span>Squawk:</span>
+                                    <span class="hud-popup-val">Sq: ${squawk}</span>
+                                </div>
+                                <div class="hud-popup-route">
+                                    <span>${routeStr}</span>
+                                </div>
+                                <div class="hud-popup-btn-row">
+                                    <button class="hud-popup-btn" onclick="handleSendQuery('${fCode} nolu uçağın canlı telemetri durumunu detaylı incele.')" title="Detay Sor">
+                                        🔍 Detay
+                                    </button>
+                                    <button class="hud-popup-btn btn-watch" onclick="addToWatchlist('${encodedFlight}')" title="Takibe Al">
+                                        🔔 Takip
+                                    </button>
+                                    <button class="hud-popup-btn btn-compare" onclick="addToComparison('${encodedFlight}')" title="Kıyaslama Moduna Ekle">
+                                        ⚖️ Kıyasla
+                                    </button>
+                                </div>
+                            </div>
+                        `;
+
+                        const marker = L.marker([lat, lon], { icon: customIcon }).addTo(map);
+                        marker.bindPopup(popupContent);
+
+                        // Dynamic Flight Path Line On-Click (Origin ➔ Current ➔ Destination)
+                        marker.on('popupopen', () => {
+                            activeRouteLayerGroup.clearLayers();
+                            if (f.route_endpoints) {
+                                try {
+                                    const ep = f.route_endpoints;
+                                    const pathCoords = [];
+                                    if (ep.origin && ep.origin.lat && ep.origin.lon) {
+                                        const origLat = parseFloat(ep.origin.lat);
+                                        const origLon = parseFloat(ep.origin.lon);
+                                        pathCoords.push([origLat, origLon]);
+                                        
+                                        // Origin Airport Badge
+                                        const origIcon = L.divIcon({
+                                            className: 'radar-airport-marker',
+                                            html: `<div style="background:#0284c7;color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;border:1px solid #38bdf8;box-shadow:0 0 10px rgba(56,189,248,0.8);white-space:nowrap;cursor:default;">🛫 ${ep.origin.iata || 'KALKIŞ'}</div>`,
+                                            iconSize: [50, 22],
+                                            iconAnchor: [25, 11]
+                                        });
+                                        L.marker([origLat, origLon], { icon: origIcon }).addTo(activeRouteLayerGroup);
+                                    }
+
+                                    pathCoords.push([lat, lon]);
+
+                                    if (ep.destination && ep.destination.lat && ep.destination.lon) {
+                                        const destLat = parseFloat(ep.destination.lat);
+                                        const destLon = parseFloat(ep.destination.lon);
+                                        pathCoords.push([destLat, destLon]);
+
+                                        // Destination Airport Badge
+                                        const destIcon = L.divIcon({
+                                            className: 'radar-airport-marker',
+                                            html: `<div style="background:#059669;color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;border:1px solid #34d399;box-shadow:0 0 10px rgba(52,211,153,0.8);white-space:nowrap;cursor:default;">🛬 ${ep.destination.iata || 'VARIŞ'}</div>`,
+                                            iconSize: [50, 22],
+                                            iconAnchor: [25, 11]
+                                        });
+                                        L.marker([destLat, destLon], { icon: destIcon }).addTo(activeRouteLayerGroup);
+                                    }
+
+                                    if (pathCoords.length >= 2) {
+                                        const routeLine = L.polyline(pathCoords, {
+                                            color: "#00f0ff",
+                                            weight: 2.6,
+                                            opacity: 0.85,
+                                            dashArray: "6, 8"
+                                        }).addTo(activeRouteLayerGroup);
+                                        routeLine.bindTooltip(`✈️ ${fCode} Rotası: ${routeStr}`, { sticky: true });
+                                    }
+                                } catch (pErr) {}
+                            }
+                        });
+
+                        marker.on('popupclose', () => {
+                            activeRouteLayerGroup.clearLayers();
+                        });
+
+                        markers.push(marker);
+                        latLngs.push([lat, lon]);
+                    } catch (fErr) {
+                        console.warn("Flight marker render error:", fErr);
+                    }
+                });
+
+                // 3. Create Heatmap Layer (toggleable)
+                let heatLayer = null;
+                if (typeof L.heatLayer === 'function' && heatPoints.length > 0) {
+                    try {
+                        heatLayer = L.heatLayer(heatPoints, { radius: 28, blur: 16, maxZoom: 10 });
+                    } catch (hErr) {}
+                }
+
+                // Initial view centering: prioritize actual flights bounds
+                if (latLngs.length > 1) {
+                    try { map.fitBounds(latLngs, { padding: [40, 40], maxZoom: 12 }); } catch(e){}
+                } else if (latLngs.length === 1) {
+                    map.setView(latLngs[0], 9);
+                } else if (detectedPolyBounds && detectedPolyBounds.isValid()) {
+                    map.fitBounds(detectedPolyBounds, { padding: [30, 30], maxZoom: 12 });
+                } else {
+                    map.setView([39.0, 35.0], 6);
+                }
+
+                activeLeafletMaps[containerId] = {
+                    map: map,
+                    latLngs: latLngs,
+                    polyBounds: detectedPolyBounds,
+                    flights: flights,
+                    heatLayer: heatLayer,
+                    isHeatActive: false
+                };
+
+                setTimeout(() => { map.invalidateSize(); }, 100);
+                setTimeout(() => {
+                    map.invalidateSize();
+                    if (latLngs.length > 1) {
+                        try { map.fitBounds(latLngs, { padding: [40, 40], maxZoom: 12 }); } catch(e){}
+                    } else if (detectedPolyBounds && detectedPolyBounds.isValid()) {
+                        map.fitBounds(detectedPolyBounds, { padding: [30, 30], maxZoom: 12 });
+                    }
+                }, 300);
+
+            } catch (e) {
+                console.error("Radar map init error:", e);
+            }
+        }
+
+        function appendMessage(role, content, toolCalls = [], model = "", thoughtProcess = null, matchedFlights = [], geoOverlays = []) {
+            const list = document.getElementById("messages-list");
+            const row = document.createElement("div");
+            row.className = `message-row ${role}`;
+
+            let thoughtHtml = "";
+            if (role === "assistant" && thoughtProcess) {
+                thoughtHtml = renderThoughtProcessHtml(thoughtProcess);
+            }
+
+            let toolCallsHtml = "";
+            if (toolCalls && toolCalls.length > 0 && !thoughtProcess) {
+                toolCallsHtml = `
+                <div class="tool-trace-container">
+                    ${toolCalls.map(tc => `
+                        <div class="tool-trace-card">
+                            <div class="tool-trace-header">
+                                <span>⚙️ Kafka MCP Tool:</span>
+                                <strong>${tc.name}</strong>
+                            </div>
+                            <div class="tool-trace-detail">Parametreler: ${JSON.stringify(tc.args || {})}</div>
+                        </div>
+                    `).join("")}
+                </div>
+                `;
+            }
+
+            let mapHtml = "";
+            let mapContainerId = "";
+            if (role === "assistant" && matchedFlights && matchedFlights.length > 0) {
+                mapMessageCounter++;
+                mapContainerId = `flight-radar-map-${mapMessageCounter}`;
+                mapHtml = `
+                <div class="radar-map-wrapper" id="map-wrapper-${mapContainerId}">
+                    <div class="radar-map-header">
+                        <div class="radar-map-title-group">
+                            <span>🗺️ Canlı Telemetri Radarı</span>
+                            <span class="radar-map-count-badge">${matchedFlights.length} Uçuş Konumlandı</span>
+                        </div>
+                        <div class="radar-map-actions">
+                            <button class="radar-map-btn" onclick="fitRadarMapBounds('${mapContainerId}')" title="Tüm uçakları haritada odakla">
+                                🎯 Odakla
+                            </button>
+                            <button class="radar-map-btn" onclick="toggleHeatmap('${mapContainerId}')" id="heat-btn-${mapContainerId}" title="Termal Isı Haritası">
+                                🔥 Isı Haritası
+                            </button>
+                            <button class="radar-map-btn" onclick="exportMapFlightsCSV('${mapContainerId}')" title="CSV Olarak İndir">
+                                📥 CSV İndir
+                            </button>
+                            <button class="radar-map-btn" onclick="toggleRadarMap('${mapContainerId}')">
+                                <span id="map-toggle-text-${mapContainerId}">🗺️ Haritayı Gizle</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div id="${mapContainerId}" class="radar-map-canvas"></div>
+                </div>
+                `;
+            }
+
+            row.innerHTML = `
+                <div class="message-sender-tag">
+                    ${role === 'user' ? '👤 Siz' : '⚡ Semalar Kafka Asistanı'}
+                    ${model ? `<span style="color: #64748b; font-size: 10px; margin-left: 6px;">(${model})</span>` : ''}
+                </div>
+                <div class="message-bubble">
+                    ${thoughtHtml}
+                    ${toolCallsHtml}
+                    <div>${role === 'user' ? content : formatMessageText(content)}</div>
+                    ${mapHtml}
+                </div>
+            `;
+
+            list.appendChild(row);
+            const container = document.getElementById("chat-messages-container");
+            container.scrollTop = container.scrollHeight;
+
+            if (mapContainerId && matchedFlights && matchedFlights.length > 0) {
+                setTimeout(() => {
+                    initRadarMap(mapContainerId, matchedFlights, geoOverlays);
+                }, 80);
+                setTimeout(() => {
+                    if (activeLeafletMaps[mapContainerId]) {
+                        activeLeafletMaps[mapContainerId].map.invalidateSize();
+                        fitRadarMapBounds(mapContainerId);
+                    }
+                }, 350);
+            }
+        }
+
+        async function handleSendQuery(query) {
+            const text = (query || document.getElementById("chat-input").value).trim();
+            if (!text || isChatLoading) return;
+
+            document.getElementById("chat-input").value = "";
+            appendMessage("user", text);
+
+            isChatLoading = true;
+            document.getElementById("loading-indicator").style.display = "flex";
+            const container = document.getElementById("chat-messages-container");
+            container.scrollTop = container.scrollHeight;
+
+            try {
+                const res = await fetch(`${API_BASE}/api/chat`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ message: text, project: "kafka" })
+                });
+
+                const data = await res.json();
+                if (data.status === "success") {
+                    appendMessage("assistant", data.answer, data.tool_calls, data.model, data.thought_process, data.matched_flights, data.geo_overlays || []);
+                } else {
+                    appendMessage("assistant", `⚠️ **Hata:** ${data.answer || data.error || 'İstek işlenemedi.'}`, data.tool_calls, data.model, data.thought_process, data.matched_flights, data.geo_overlays || []);
+                }
+                loadLogs(); // Refresh logs after query
+            } catch (err) {
+                appendMessage("assistant", `❌ **Bağlantı Hatası:** Sunucuya erişilemedi (${err.message}). Lütfen backend'in çalıştığından emin olun.`);
+            } finally {
+                isChatLoading = false;
+                document.getElementById("loading-indicator").style.display = "none";
+                container.scrollTop = container.scrollHeight;
+            }
+        }
+
+        async function loadStats() {
+            try {
+                const res = await fetch(`${API_BASE}/api/kafka/stats`);
+                if (!res.ok) return;
+                const data = await res.json();
+                
+                document.getElementById("kpi-total-flights").textContent = (data.total_flights_in_kafka !== undefined ? data.total_flights_in_kafka : 0).toLocaleString();
+                document.getElementById("kpi-total-airlines").textContent = (data.total_unique_airlines !== undefined ? data.total_unique_airlines : 0).toLocaleString();
+                document.getElementById("kpi-max-speed").textContent = `${data.speed_kmh?.max || 0} km/s`;
+                document.getElementById("kpi-max-alt").textContent = `${data.altitude_feet?.max ? data.altitude_feet.max.toLocaleString() : 0} ft`;
+            } catch (err) {
+                console.warn("Stats error:", err);
+            }
+        }
+
+        async function loadFlights() {
+            const container = document.getElementById("kafka-flights-list");
+            const countDisplay = document.getElementById("flights-count-display");
+            
+            try {
+                const params = new URLSearchParams({ limit: 60 });
+                if (currentMinSpeed) params.set("min_speed", currentMinSpeed);
+                if (currentSearchQuery) params.set("query", currentSearchQuery);
+
+                const res = await fetch(`${API_BASE}/api/kafka/flights?${params.toString()}`);
+                if (!res.ok) throw new Error("Uçuş verisi alınamadı");
+                const data = await res.json();
+                const flights = data.flights || [];
+
+                countDisplay.textContent = flights.length;
+
+                if (flights.length === 0) {
+                    container.innerHTML = `<div style="text-align: center; padding: 20px; color: #64748b; font-size: 12px;">Eşleşen uçuş bulunamadı.</div>`;
+                    return;
+                }
+
+                container.innerHTML = flights.map(f => {
+                    const fCode = f.flight_number || f.callsign || "N/A";
+                    const spdKmh = Math.round(f.telemetry?.ground_speed_kmh || 0);
+                    const spdKts = Math.round(f.telemetry?.ground_speed_knots || (spdKmh / 1.852) || 0);
+                    const isSupersonic = spdKmh >= 900;
+                    const altFeet = f.telemetry?.altitude_feet ? f.telemetry.altitude_feet.toLocaleString() : 0;
+
+                    return `
+                    <div class="flight-item" onclick="handleSendQuery('${fCode} nolu uçağın Kafka akışındaki canlı durumunu, irtifasını, hızını ve rotasını getir.')" title="Detaylarını AI Asistanına Sor">
+                        <div class="flight-item-top">
+                            <span class="flight-number">${fCode}</span>
+                            <span class="telemetry-speed-badge ${isSupersonic ? 'supersonic' : ''}" style="font-size: 11px; padding: 2px 6px;">⚡ ${spdKts} kts <span style="font-size:9px;opacity:0.8;">(${spdKmh} km/sa)</span></span>
+                        </div>
+                        <div class="flight-route">
+                            <span class="route-pill">${f.route?.display || '? ➔ ?'}</span>
+                            <span style="font-size: 11px; color: #94a3b8;">${altFeet} ft</span>
+                        </div>
+                        <div class="flight-model">✈ ${f.aircraft_model || 'Bilinmiyor'}</div>
+                    </div>
+                    `;
+                }).join("");
+
+            } catch (err) {
+                container.innerHTML = `<div style="text-align: center; padding: 20px; color: #ef4444; font-size: 12px;">Hata: ${err.message}</div>`;
+            }
+        }
+
+        async function loadLogs() {
+            const tableBody = document.getElementById("audit-table-body");
+            const logsBadge = document.getElementById("tab-logs-badge");
+
+            try {
+                const res = await fetch(`${API_BASE}/api/kafka/logs`);
+                if (!res.ok) return;
+                const data = await res.json();
+                const logs = data.logs || [];
+
+                if (logsBadge) {
+                    logsBadge.textContent = `MCP Logları (${logs.length})`;
+                }
+
+                if (!tableBody) return;
+
+                if (logs.length === 0) {
+                    tableBody.innerHTML = `<tr><td colspan="4" style="text-align: center; padding: 20px; color: #64748b;">Henüz kaydedilmiş MCP isteği yok.</td></tr>`;
+                    return;
+                }
+
+                tableBody.innerHTML = logs.map(log => {
+                    const timeStr = log.timestamp ? log.timestamp.split("T")[1].substring(0, 8) : "--:--:--";
+                    const matchedStr = (log.matched_records !== null && log.matched_records !== undefined) ? `${log.matched_records} uçuş` : "-";
+                    const argsSummary = log.arguments ? JSON.stringify(log.arguments) : "";
+
+                    return `
+                    <tr title="${argsSummary.replace(/"/g, '&quot;')}">
+                        <td style="font-family: var(--font-mono); color: #94a3b8;">${timeStr}</td>
+                        <td><span class="audit-tool-badge" style="font-size: 10px; padding: 1px 5px;">${log.tool_name}</span></td>
+                        <td>${matchedStr}</td>
+                        <td style="font-family: var(--font-mono); color: #34d399; font-weight: 600;">⚡ ${log.execution_time_ms}ms</td>
+                    </tr>
+                    `;
+                }).join("");
+
+            } catch (err) {
+                console.warn("Logs error:", err);
+            }
+        }
+
+
+        async function loadStatus() {
+            try {
+                const res = await fetch(`${API_BASE}/api/status`);
+                if (!res.ok) return;
+                const data = await res.json();
+                document.getElementById("ai-model-badge").textContent = `✨ ${data.provider?.toUpperCase() || 'AI'} (${data.model || ''})`;
+            } catch (e) {}
+        }
+
+        document.addEventListener("DOMContentLoaded", () => {
+            loadStatus();
+            loadStats();
+            loadFlights();
+            loadLogs();
+
+            // Refresh telemetry stats, flights and logs periodically in memory
+            setInterval(loadStats, 10000);
+            setInterval(loadFlights, 12000);
+            setInterval(loadLogs, 8000);
+
+            // Send Chat
+
+            document.getElementById("btn-send-chat").addEventListener("click", () => handleSendQuery());
+            document.getElementById("chat-input").addEventListener("keydown", (e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSendQuery();
+                }
+            });
+
+            // Prompt Chips
+            document.querySelectorAll(".prompt-chip").forEach(chip => {
+                chip.addEventListener("click", () => {
+                    handleSendQuery(chip.getAttribute("data-query"));
+                });
+            });
+
+            // Clear Chat
+            document.getElementById("btn-clear-chat").addEventListener("click", () => {
+                document.getElementById("messages-list").innerHTML = "";
+            });
+
+            // Toggle Sidebar
+            document.getElementById("btn-toggle-sidebar").addEventListener("click", () => {
+                const sidebar = document.getElementById("kafka-sidebar");
+                isSidebarOpen = !isSidebarOpen;
+                sidebar.style.display = isSidebarOpen ? "flex" : "none";
+                document.getElementById("btn-toggle-sidebar").textContent = isSidebarOpen ? "📡 Paneli Gizle" : "📡 Radar Paneli";
+            });
+
+            // Speed Pills Clicks
+            document.querySelectorAll("#speed-filters-container .speed-pill-btn").forEach(btn => {
+                btn.addEventListener("click", () => {
+                    document.querySelectorAll("#speed-filters-container .speed-pill-btn").forEach(b => b.classList.remove("active"));
+                    btn.classList.add("active");
+                    currentMinSpeed = btn.getAttribute("data-speed");
+                    loadFlights();
+                });
+            });
+
+            // Search Form
+            document.getElementById("search-form").addEventListener("submit", (e) => {
+                e.preventDefault();
+                currentSearchQuery = document.getElementById("search-input").value.trim();
+                loadFlights();
+            });
+
+            // Sidebar Tabs Switcher (Flights vs Logs)
+            const tabBtnFlights = document.getElementById("tab-btn-flights");
+            const tabBtnLogs = document.getElementById("tab-btn-logs");
+            const secFlights = document.getElementById("sidebar-flights-view");
+            const secLogs = document.getElementById("sidebar-logs-view");
+
+            tabBtnFlights.addEventListener("click", () => {
+                tabBtnFlights.classList.add("active");
+                tabBtnLogs.classList.remove("active");
+                secFlights.style.display = "flex";
+                secLogs.style.display = "none";
+            });
+
+            tabBtnLogs.addEventListener("click", () => {
+                tabBtnLogs.classList.add("active");
+                tabBtnFlights.classList.remove("active");
+                secFlights.style.display = "none";
+                secLogs.style.display = "flex";
+                loadLogs();
+            });
+
+            // Sync Button
+            document.getElementById("btn-sync-kafka").addEventListener("click", async () => {
+                try {
+                    const res = await fetch(`${API_BASE}/api/kafka/sync`, { method: "POST" });
+                    const data = await res.json();
+                    loadStats();
+                    loadFlights();
+                } catch (e) {}
+            });
+
+            // Produce Fresh Button
+            document.getElementById("btn-produce-fresh").addEventListener("click", async () => {
+                if (isProducing) return;
+                isProducing = true;
+                const btn = document.getElementById("btn-produce-fresh");
+                btn.textContent = "⏳...";
+
+                try {
+                    await fetch(`${API_BASE}/api/kafka/produce`, { method: "POST" });
+                    loadStats();
+                    loadFlights();
+                } catch (e) {
+                } finally {
+                    isProducing = false;
+                    btn.textContent = "🚀 Taze Veri Bas";
+                }
+            });
+
+            document.getElementById("btn-refresh-logs").addEventListener("click", loadLogs);
+        });
+    </script>
+</body>
+</html>

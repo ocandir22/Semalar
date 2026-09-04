@@ -3,7 +3,7 @@ import sys
 import json
 from typing import Optional, List, Dict, Any
 from mcp.server import MCPServer
-from starlette.responses import HTMLResponse, JSONResponse, FileResponse
+from starlette.responses import HTMLResponse, JSONResponse, FileResponse, RedirectResponse
 from starlette.middleware.cors import CORSMiddleware
 from starlette.staticfiles import StaticFiles
 import uvicorn
@@ -591,11 +591,13 @@ async def api_kafka_produce_fresh(request):
 FRONTEND_DIR = os.path.join(PARENT_DIR, "frontend")
 
 
-async def serve_kafka(request):
-    """Serves Semalar: Apache Kafka Telemetry & Speed Dashboard (kafka.html)."""
-    kafka_file = os.path.join(FRONTEND_DIR, "kafka.html")
-    if os.path.exists(kafka_file):
-        with open(kafka_file, "r", encoding="utf-8") as f:
+async def serve_semalar(request):
+    """Serves Semalar: Live Flight Telemetry & AI Cockpit (semalar.html / kafka.html)."""
+    semalar_file = os.path.join(FRONTEND_DIR, "semalar.html")
+    if not os.path.exists(semalar_file):
+        semalar_file = os.path.join(FRONTEND_DIR, "kafka.html")
+    if os.path.exists(semalar_file):
+        with open(semalar_file, "r", encoding="utf-8") as f:
             content = f.read()
         return HTMLResponse(
             content,
@@ -605,7 +607,12 @@ async def serve_kafka(request):
                 "Expires": "0"
             }
         )
-    return HTMLResponse("<h1>Semalar (kafka.html) not found.</h1>")
+    return HTMLResponse("<h1>Semalar (semalar.html / kafka.html) not found.</h1>")
+
+
+async def redirect_to_semalar(request):
+    """Redirects legacy /kafka to /semalar."""
+    return RedirectResponse(url="/semalar", status_code=307)
 
 
 app.add_route("/api/tools/execute", api_tools_execute, methods=["POST"])
@@ -619,8 +626,9 @@ app.add_route("/api/kafka/fastest", api_kafka_fastest, methods=["GET"])
 app.add_route("/api/kafka/logs", api_kafka_logs, methods=["GET"])
 app.add_route("/api/kafka/sync", api_kafka_sync, methods=["POST"])
 app.add_route("/api/kafka/produce", api_kafka_produce_fresh, methods=["POST"])
-app.add_route("/", serve_kafka, methods=["GET"])
-app.add_route("/kafka", serve_kafka, methods=["GET"])
+app.add_route("/", serve_semalar, methods=["GET"])
+app.add_route("/semalar", serve_semalar, methods=["GET"])
+app.add_route("/kafka", redirect_to_semalar, methods=["GET"])
 
 # Mount frontend directory for static assets
 if os.path.exists(FRONTEND_DIR):
@@ -631,7 +639,7 @@ if __name__ == "__main__":
     print("=" * 65)
     print("✈️ Semalar — Apache Kafka Live Flight Telemetry & AI Cockpit")
     print("📡 FastMCP Streamable HTTP   : http://localhost:8000/mcp")
-    print("⚡ Kafka Telemetry Cockpit UI: http://localhost:8000")
+    print("⚡ Semalar Cockpit UI        : http://localhost:8000/semalar")
     print(f"🛠️ Active FastMCP Tools ({len(MCP_TOOLS_REGISTRY)}):")
     for t_name in MCP_TOOLS_REGISTRY:
         if t_name != "kafka_query_stream":
@@ -639,7 +647,7 @@ if __name__ == "__main__":
     print("🇹🇷 Real-time Ingestion       : ALL Live Turkey Airspace Flights ➔ Kafka (15s Loop)")
     print("📊 Apache Kafka UI Panel     : http://localhost:8080")
     print("=" * 65)
-    print("👉 Open in Browser : http://localhost:8000")
+    print("👉 Open in Browser : http://localhost:8000/semalar")
     print("=" * 65)
     start_streamer_if_needed()
     uvicorn.run(app, host="0.0.0.0", port=8000)
