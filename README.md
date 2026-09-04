@@ -16,7 +16,7 @@
 5. **Multi-Provider AI Flight Agent**: Zero-hallucination conversational AI agent supporting **Groq (Qwen 2.5 / Llama 3.3)**, **Google Gemini (3.7 Flash / 2.5 Flash)**, **OpenAI**, **DeepSeek**, **OpenRouter**, and **Local Ollama**.
 6. **Real-Time Kafka Audit Logging**: Automatic telemetry pipeline pushing every MCP tool call, execution metrics, and latency to the Kafka `mcp-requests` topic.
 7. **Web Cockpit & Terminal CLI**:
-   - ⚡ **Kafka Telemetry Cockpit UI**: `http://localhost:8000`
+   - ⚡ **Semalar Telemetry Cockpit UI**: `http://localhost:8000/semalar` (veya `http://localhost:8000`)
    - 📊 **Apache Kafka UI Panel**: `http://localhost:8080`
    - 💻 **Interactive Terminal CLI**: `python backend/project_kafka/kafka_cli.py`
 
@@ -135,7 +135,7 @@ GROQ_API_KEY=your_groq_api_key
 ```bash
 python backend/server.py
 ```
-Open **[http://localhost:8000](http://localhost:8000)** in your browser.
+Open **[http://localhost:8000/semalar](http://localhost:8000/semalar)** in your browser.
 
 ### 5. (Optional) Run Interactive Terminal CLI
 ```bash

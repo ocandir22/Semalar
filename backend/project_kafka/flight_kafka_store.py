@@ -409,6 +409,7 @@ class FlightKafkaStore:
         self,
         query: Optional[str] = None,
         region: Optional[str] = None,
+        city: Optional[str] = None,
         airline: Optional[str] = None,
         min_speed_kmh: Optional[float] = None,
         min_altitude_feet: Optional[float] = None,
@@ -427,7 +428,7 @@ class FlightKafkaStore:
         clean_airline = airline.strip().upper() if airline and str(airline).strip() else None
 
         # Resolve geographical filter via core geo_engine (81 provinces or 7 macro regions)
-        raw_geo = (region or kwargs.get("country") or "").strip()
+        raw_geo = (city or region or kwargs.get("province") or kwargs.get("country") or kwargs.get("city") or "").strip()
         geo_filter = geo_engine.resolve_geo_filter(raw_geo) if raw_geo else None
         region_name = geo_filter.get("name", raw_geo) if geo_filter else None
 
