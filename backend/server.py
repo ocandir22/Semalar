@@ -103,7 +103,7 @@ def query_kafka_stream(
         min_speed_kmh: Filtrelenecek minimum yer hızı (km/s cinsinden, örn: 800).
         min_altitude_feet: Filtrelenecek minimum uçuş irtifası (feet cinsinden, örn: 30000).
         get_stats: Tüm Kafka telemetri akışı genel istatistik özetini almak için True yapın.
-        limit: Dönecek maksimum uçuş sayısı (varsayılan: 15).
+        limit: Dönecek maksimum uçuş sayısı (varsayılan: 15). Kullanıcı tek bir uçak ('en hızlısı', 'en yükseği', 'sadece 1 tane', 'en yakını' vb.) istediğinde veya süperlatif ('en ...') sorduğunda MUTLAKA limit=1 gönderin. Belirli bir adet belirttiyse (örn: 'en hızlı 3 uçak') limit=3 gönderin.
 
     Returns:
         Dict[str, Any]: Eşleşen uçakların canlı telemetrisi, irtifası, hızı, koordinatları ve rota bilgileri.
@@ -136,7 +136,7 @@ def get_emergency_flights(
     Args:
         emergency_type: Emergency squawk code filter ('7700' for General Emergency, '7600' for Lost Radio Comms, '7500' for Hijacking, or 'ALL').
         include_rapid_descent: Whether to flag aircraft descending faster than -3000 feet/min.
-        limit: Maximum number of emergency flight records to return.
+        limit: Maximum number of emergency flight records to return (default: 15). Set limit=1 if the user asks for a single or latest emergency.
 
     Returns:
         Dict[str, Any]: Emergency status, detected alert flights, squawk descriptions, and alert level.
@@ -174,7 +174,7 @@ def find_nearby_aircraft(
         longitude: Center longitude coordinate.
         radius_km: Search circle radius in kilometers (default: 50.0 km).
         min_altitude_feet: Optional minimum altitude filter.
-        limit: Maximum number of nearby flight records to return.
+        limit: Maximum number of nearby flight records to return (default: 15). Set limit=1 if the user asks for only the single closest aircraft ('en yakın uçak', 'sadece 1 tane').
 
     Returns:
         Dict[str, Any]: List of aircraft sorted by ascending radial distance in kilometers from the center point.
@@ -207,7 +207,7 @@ def get_airport_traffic(
         airport_code: 3-letter IATA code (e.g. 'IST', 'SAW', 'ESB', 'AYT', 'ADB', 'DLM', 'BJV', 'TZX') or 4-letter ICAO code.
         traffic_type: Filter traffic type ('ARRIVALS', 'DEPARTURES', or 'ALL').
         airline: Optional airline filter (e.g. 'THY', 'PGT', 'TKJ').
-        limit: Maximum number of flights to return.
+        limit: Maximum number of flights to return (default: 15). Set limit=1 if only 1 aircraft is requested.
 
     Returns:
         Dict[str, Any]: Airport metadata, arrival/departure counts, and detailed flight schedules in terminal area.
@@ -240,7 +240,7 @@ def get_vertical_rate_flights(
         min_vertical_speed_fpm: Minimum vertical speed threshold in feet per minute (e.g. 1500 for steep climbs/descents).
         region: Optional Turkish province or region filter.
         airline: Optional airline filter.
-        limit: Maximum number of flights to return.
+        limit: Maximum number of flights to return (default: 15). CRITICAL: If the user asks for the single highest/steepest climb or descent ('en dik tırmanan', 'en yükseği', 'sadece 1 tane', 'tek bir uçak'), you MUST set limit=1.
 
     Returns:
         Dict[str, Any]: List of aircraft with vertical speed (fpm and m/s), flight phase, and altitude profiles.
