@@ -1,0 +1,24 @@
+Get-Process *docker* -ErrorAction SilentlyContinue | Stop-Process 
+-Force
+
+wsl --shutdown
+
+Start-Process "C:\Program Files\Docker\Docker\Docker Desktop.exe" 
+
+docker compose up -d
+
+.\.venv\Scripts\Activate.ps1
+
+deactivate
+
+docker compose down
+
+
+"Bodrum ve İzmir semalarında 30.000 feet üzerindeki uçaklar hangileri?"
+
+"Şu an hava sahasında tırmanış açısı en dik olan dakikada +2.500 feet üzeri tırmanan uçak hangisi, en yükseğini ver sadece"
+
+"Hava sahasında Squawk 7700/7600/7500 acil kodu veya ani irtifa kaybı yaşayan uçak var mı?"
+
+"İstanbul Havalimanı (IST) iniş yaklaşmasındaki uçaklar hangileri ve en yakını kaç km mesafede?"
+
